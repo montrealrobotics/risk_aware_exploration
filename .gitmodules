@@ -1,0 +1,3 @@
+[submodule "cleanrl"]
+	path = cleanrl
+	url = git@github.com:montrealrobotics/cleanrl.git
