@@ -76,9 +76,14 @@ def make_env(env_id, seed, idx, capture_video, run_name):
     def thunk():
         env = gym.make(env_id)
         env = gym.wrappers.RecordEpisodeStatistics(env)
-        if capture_video:
-            if idx == 0:
-                env = gym.wrappers.RecordVideo(env, f"videos/{run_name}")
+        #if capture_video:
+        #    if idx == 0:
+        #        env = gym.wrappers.RecordVideo(env, f"videos/{run_name}")
+        env = gym.wrappers.ClipAction(env)
+        env = gym.wrappers.NormalizeObservation(env)
+        env = gym.wrappers.TransformObservation(env, lambda obs: np.clip(obs, -10, 10))
+        env = gym.wrappers.NormalizeReward(env, gamma=args.gamma)
+        env = gym.wrappers.TransformReward(env, lambda reward: np.clip(reward, -10, 10))
         env.seed(seed)
         env.action_space.seed(seed)
         env.observation_space.seed(seed)
@@ -224,18 +229,15 @@ if __name__ == "__main__":
 
         # TRY NOT TO MODIFY: execute the game and log data.
         next_obs, rewards, dones, _, infos = envs.step(actions)
-
-
-
         return_ += args.gamma * rewards
         try:
             ep_cost += info["cost"]; cum_cost += info["cost"]
         except:
             pass
-        if dones[0]:
-            wandb.log({"episodic_return": return_}, step=global_step)
-            wandb.log({"episodic_cost": ep_cost}, step=global_step)
-            wandb.log({"cummulative_cost": cum_cost}, step=global_step)
+        if dones[0] or global_step == args.total_timesteps - 1:
+            #wandb.log({"episodic_return": return_}, step=global_step)
+            #wandb.log({"episodic_cost": ep_cost}, step=global_step)
+            #wandb.log({"cummulative_cost": cum_cost}, step=global_step)
             print(f"global_step={global_step}, episodic_return={return_}")
             return_ = 0
             ep_cost = np.array([0.])
@@ -247,12 +249,11 @@ if __name__ == "__main__":
         #        writer.add_scalar("charts/episodic_return", info["episode"]["r"], global_step)
         #        writer.add_scalar("charts/episodic_length", info["episode"]["l"], global_step)
         #        break
-
         # TRY NOT TO MODIFY: save data to reply buffer; handle `terminal_observation`
         real_next_obs = next_obs.copy()
-        for idx, d in enumerate(dones):
-            if d:
-                real_next_obs[idx] = infos[idx]["terminal_observation"]
+        #for idx, d in enumerate(dones):
+        #    if d:
+        #        real_next_obs[idx] = infos[idx]["terminal_observation"]
         rb.add(obs, real_next_obs, actions, rewards, dones, infos)
 
         # TRY NOT TO MODIFY: CRUCIAL step easy to overlook
@@ -321,6 +322,5 @@ if __name__ == "__main__":
                 writer.add_scalar("charts/SPS", int(global_step / (time.time() - start_time)), global_step)
                 if args.autotune:
                     writer.add_scalar("losses/alpha_loss", alpha_loss.item(), global_step)
-
     envs.close()
     writer.close()
