@@ -14,6 +14,7 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.distributions.normal import Normal
 from torch.utils.tensorboard import SummaryWriter
+from safety_gym.envs.engine import Engine
 
 
 def parse_args():
@@ -53,10 +54,16 @@ def parse_args():
         help="the discount factor gamma")
     parser.add_argument("--gae-lambda", type=float, default=0.95,
         help="the lambda for the general advantage estimation")
-    parser.add_argument("--num-minibatches", type=int, default=32,
-        help="the number of mini-batches")
-    parser.add_argument("--update-epochs", type=int, default=10,
-        help="the K epochs to update the policy")
+    parser.add_argument("--hazards_num", type=int, default=4,
+        help="number of hazards in the environment")
+    parser.add_argument("--vases_num", type=int, default=4,
+        help="number of vases in the environment")
+    parser.add_argument("--pillars_num", type=int, default=4,
+        help="number of pillars in the environment")
+    parser.add_argument("--gremlins_num", type=int, default=0,
+        help="number of gremlins in the environment")
+    parser.add_argument("--task", type=str, default="push", 
+        help="task to do in the environment (push / button / goal)")
     parser.add_argument("--norm-adv", type=lambda x: bool(strtobool(x)), default=True, nargs="?", const=True,
         help="Toggles advantages normalization")
     parser.add_argument("--clip-coef", type=float, default=0.2,
@@ -67,22 +74,51 @@ def parse_args():
         help="coefficient of the entropy")
     parser.add_argument("--vf-coef", type=float, default=0.5,
         help="coefficient of the value function")
-    parser.add_argument("--max-grad-norm", type=float, default=0.5,
-        help="the maximum norm for the gradient clipping")
+    parser.add_argument("--change_config_schedule", type=int, default=5,
+        help="change the configuration of the environment every x episodes")
     parser.add_argument("--target-kl", type=float, default=None,
         help="the target KL divergence threshold")
     parser.add_argument("--model_name", type=str, default="ppo", 
         help="name of the model" ) 
+    parser.add_argument("--config_seed", type=int, default=1,
+        help="seed to sample the right configuration.")
     args = parser.parse_args()
-    args.batch_size = int(args.num_envs * args.num_steps)
-    args.minibatch_size = int(args.batch_size // args.num_minibatches)
+    #args.batch_size = int(args.num_envs * args.num_steps)
+    #args.minibatch_size = int(args.batch_size // args.num_minibatches)
     # fmt: on
     return args
 
 
-def make_env(env_id, seed, idx, capture_video, run_name, gamma):
+
+def get_random_config(args):
+    config = {
+        'robot_base': 'xmls/car.xml',
+        'task': args.task,
+        'observe_goal_lidar': True,
+        'observe_box_lidar': True,
+        'observe_box_lidar': True,
+        'observe_hazards': True,
+        'observe_vases': True,
+        'constrain_hazards': True,
+        'hazards_num': args.hazards_num,
+        'vases_num': args.vases_num,
+        'pillars_num': args.pillars_num,
+        'gremlins_num': args.gremlins_num,
+        'observation_flatten': True,
+        #'observe_vision': True
+    }
+    return config 
+
+
+
+
+
+
+def make_env(args, seed, idx, capture_video, run_name, gamma):
     def thunk():
-        env = gym.make(env_id)
+        config = get_random_config(args)
+        print("Config: ", config)
+        env = Engine(config)
         env = gym.wrappers.RecordEpisodeStatistics(env)
         #if capture_video:
         #    if idx == 0:
@@ -102,7 +138,8 @@ def make_env(env_id, seed, idx, capture_video, run_name, gamma):
 
 if __name__ == "__main__":
     args = parse_args()
-    run_name = f"{args.env_id}__{args.exp_name}__{args.seed}__{int(time.time())}"
+    run_name = f"Uniform_H{args.hazards_num}__G{args.gremlins_num}__V{args.vases_num}__P{args.pillars_num}"
+    #run_name = f"{args.env_id}__{args.exp_name}__{args.seed}__{int(time.time())}"
     if args.track:
         import wandb
 
@@ -133,8 +170,9 @@ if __name__ == "__main__":
 
     # env setup
     envs = gym.vector.SyncVectorEnv(
-        [make_env(args.env_id, args.seed + i, i, args.capture_video, run_name, args.gamma) for i in range(args.num_envs)]
+        [make_env(args, args.seed + i, i, args.capture_video, run_name, args.gamma) for i in range(args.num_envs)]
     )
+    print(envs.single_action_space, envs.single_observation_space)
     assert isinstance(envs.single_action_space, gym.spaces.Box), "only continuous action space is supported"
 
     # ALGO Logic: Storage setup
@@ -156,13 +194,19 @@ if __name__ == "__main__":
     episode, cost_list, fear = 0, [], [] 
     traj_obs, traj_rewards, traj_actions, traj_costs = None, None, None, None
     for episode in range(args.num_episodes):
+        #if episode % args.change_config_schedule == 0:
+        #    print("Reinitializing environment configuration")
+        #    envs = gym.vector.SyncVectorEnv([make_env(args.env_id, args.seed + i, i, args.capture_video, run_name, args.gamma) for i in range(args.num_envs)])
+        #    next_obs = torch.Tensor(envs.reset()[0]).to(device)
         for step in range(0, args.num_steps):
             global_step += 1 * args.num_envs
             obs[step] = next_obs
             dones[step] = next_done
             action = torch.Tensor(envs.action_space.sample())
             actions[step] = action
-
+            #envs.render()
+            #import time
+            #time.sleep(1)
             # TRY NOT TO MODIFY: execute the game and log data.
             next_obs, reward, done, dummy, info = envs.step(action.cpu().numpy())
             
