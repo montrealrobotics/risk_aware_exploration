@@ -100,6 +100,10 @@ def get_random_config(args):
         'observe_hazards': True,
         'observe_vases': True,
         'constrain_hazards': True,
+        'constrain_vases': True,
+        'constrain_gremlins': True,
+        'constrain_pillars': True,
+        #'vases_velocity_cost': 0.0, 
         'hazards_num': args.hazards_num,
         'vases_num': args.vases_num,
         'pillars_num': args.pillars_num,
@@ -235,6 +239,10 @@ if __name__ == "__main__":
                 torch.save(traj_rewards, os.path.join(storage_path, "rewards.pt"))
                 torch.save(traj_actions, os.path.join(storage_path, "actions.pt"))
                 torch.save(traj_costs,   os.path.join(storage_path, "costs.pt"))
+                wandb.save(os.path.join(storage_path, "obs.pt"))
+                wandb.save(os.path.join(storage_path, "rewards.pt"))
+                wandb.save(os.path.join(storage_path, "actions.pt"))
+                wandb.save(os.path.join(storage_path, "costs.pt"))
                 break
     envs.close()
     writer.close()
