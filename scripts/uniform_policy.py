@@ -20,6 +20,8 @@ from safety_gym.envs.engine import Engine
 def parse_args():
     # fmt: off
     parser = argparse.ArgumentParser()
+    parser.add_argument("--storage_dir", type=str, default="./traj_single", 
+        help="storage directory with uniformly random policy") 
     parser.add_argument("--exp-name", type=str, default=os.path.basename(__file__).rstrip(".py"),
         help="the name of this experiment")
     parser.add_argument("--seed", type=int, default=1,
@@ -103,7 +105,7 @@ def get_random_config(args):
         'constrain_vases': True,
         'constrain_gremlins': True,
         'constrain_pillars': True,
-        #'vases_velocity_cost': 0.0, 
+        'vases_velocity_cost': 0.0, 
         'hazards_num': args.hazards_num,
         'vases_num': args.vases_num,
         'pillars_num': args.pillars_num,
@@ -161,7 +163,7 @@ if __name__ == "__main__":
         "hyperparameters",
         "|param|value|\n|-|-|\n%s" % ("\n".join([f"|{key}|{value}|" for key, value in vars(args).items()])),
     )
-    storage_path = os.path.join(os.getcwd(), "traj", run_name)
+    storage_path = os.path.join(os.getcwd(), args.storage_dir, run_name)
     os.system("rm -rf %s"%(storage_path))
     os.makedirs(storage_path)
     # TRY NOT TO MODIFY: seeding
@@ -191,8 +193,10 @@ if __name__ == "__main__":
     # TRY NOT TO MODIFY: start the game
     global_step = 0
     start_time = time.time()
+    print(envs.reset())
     next_obs = torch.Tensor(envs.reset()[0]).to(device)
     next_done = torch.zeros(args.num_envs).to(device)
+    cost = 0 
     # num_updates = args.total_timesteps // args.batch_size
     return_, cum_cost, ep_cost = 0.0, np.array([0.]), np.array([0.])
     episode, cost_list, fear = 0, [], [] 
@@ -206,6 +210,7 @@ if __name__ == "__main__":
             global_step += 1 * args.num_envs
             obs[step] = next_obs
             dones[step] = next_done
+            costs[step] = cost
             action = torch.Tensor(envs.action_space.sample())
             actions[step] = action
             #envs.render()
@@ -218,15 +223,15 @@ if __name__ == "__main__":
             next_obs, next_done = torch.Tensor(next_obs).to(device), torch.Tensor(done).to(device)
             return_ += args.gamma * reward 
             if not done:
-                costs[step] = torch.Tensor(info["cost"]).to(device).view(-1)
+                cost = torch.Tensor(info["cost"]).to(device).view(-1)
                 ep_cost += info["cost"]; cum_cost += info["cost"]
             else:
-                costs[step] = torch.Tensor(np.array([info["final_info"][0]["cost"]])).to(device).view(-1)
+                cost = torch.Tensor(np.array([info["final_info"][0]["cost"]])).to(device).view(-1)
                 ep_cost += np.array([info["final_info"][0]["cost"]]); cum_cost += np.array([info["final_info"][0]["cost"]])
             if done:
-                #wandb.log({"episodic_return": return_}, step=global_step)
-                #wandb.log({"episodic_cost": ep_cost}, step=global_step)
-                #wandb.log({"cummulative_cost": cum_cost}, step=global_step)
+                wandb.log({"episodic_return": return_}, step=global_step)
+                wandb.log({"episodic_cost": ep_cost}, step=global_step)
+                wandb.log({"cummulative_cost": cum_cost}, step=global_step)
                 print(f"global_step={global_step}, episodic_return={return_}")
                 return_ = 0
                 ep_cost = np.array([0.])
