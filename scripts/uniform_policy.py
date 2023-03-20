@@ -56,15 +56,15 @@ def parse_args():
         help="the discount factor gamma")
     parser.add_argument("--gae-lambda", type=float, default=0.95,
         help="the lambda for the general advantage estimation")
-    parser.add_argument("--hazards_num", type=int, default=4,
+    parser.add_argument("--hazards_num", type=int, default=0,
         help="number of hazards in the environment")
-    parser.add_argument("--vases_num", type=int, default=4,
+    parser.add_argument("--vases_num", type=int, default=0,
         help="number of vases in the environment")
-    parser.add_argument("--pillars_num", type=int, default=4,
+    parser.add_argument("--pillars_num", type=int, default=0,
         help="number of pillars in the environment")
     parser.add_argument("--gremlins_num", type=int, default=0,
         help="number of gremlins in the environment")
-    parser.add_argument("--task", type=str, default="push", 
+    parser.add_argument("--task", type=str, default="goal", 
         help="task to do in the environment (push / button / goal)")
     parser.add_argument("--norm-adv", type=lambda x: bool(strtobool(x)), default=True, nargs="?", const=True,
         help="Toggles advantages normalization")
@@ -96,11 +96,11 @@ def get_random_config(args):
     config = {
         'robot_base': 'xmls/car.xml',
         'task': args.task,
-        'observe_goal_lidar': True,
-        'observe_box_lidar': True,
-        'observe_box_lidar': True,
-        'observe_hazards': True,
-        'observe_vases': True,
+        #'observe_goal_lidar': True,
+        #'observe_box_lidar': True,
+        #'observe_box_lidar': True,
+        #'observe_hazards': True,
+        #'observe_vases': True,
         'constrain_hazards': True,
         'constrain_vases': True,
         'constrain_gremlins': True,
@@ -111,7 +111,7 @@ def get_random_config(args):
         'pillars_num': args.pillars_num,
         'gremlins_num': args.gremlins_num,
         'observation_flatten': True,
-        #'observe_vision': True
+        'observe_vision': True
     }
     return config 
 

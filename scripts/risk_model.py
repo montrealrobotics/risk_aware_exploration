@@ -48,6 +48,8 @@ def parse_args():
         help="size of the third layer of the mlp")
     parser.add_argument("--fc4_size", type=int, default=128,
         help="size of the fourth layer of the mlp")
+    parser.add_argument("--lr_schedule", type=float, default=0.99,
+        help="schedule for the learning rate decay " ) 
     return parser.parse_args()
 
 
@@ -120,7 +122,8 @@ print(torch.sum(index_targets==0)/torch.sum(index_targets==1))
 bce = nn.BCEWithLogitsLoss(pos_weight=torch.Tensor([1., torch.sum(index_targets==0)/torch.sum(index_targets==1)]).long().cuda())
 
 optimizer = optim.Adam(risk_est.parameters(), args.learning_rate)
-
+scheduler = optim.lr_scheduler.ExponentialLR(optimizer, 
+                          gamma=args.lr_schedule) # Multiplicative factor of learning rate decay.
 
 bce.to('cuda')
 #mse.to('cuda')
@@ -148,6 +151,8 @@ def evaluate_model(model, data, targets, batch_size=1000):
 def train_model(model, data, targets, test_data, test_targets, batch_size=args.batch_size):
     global_step = 0 
     for ep in range(args.num_iterations):
+        optimizer.step()
+        scheduler.step()
         for batch_idx in range(int(data.size()[0]/batch_size)):
             global_step += 1 
             if batch_idx == data.size()[0]/batch_size:
