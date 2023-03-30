@@ -101,6 +101,7 @@ def get_random_config(args):
         #'observe_box_lidar': True,
         #'observe_hazards': True,
         #'observe_vases': True,
+        "sensors_obs": [],
         'constrain_hazards': True,
         'constrain_vases': True,
         'constrain_gremlins': True,
@@ -111,7 +112,10 @@ def get_random_config(args):
         'pillars_num': args.pillars_num,
         'gremlins_num': args.gremlins_num,
         'observation_flatten': True,
-        'observe_vision': True
+        'observe_vision': True,
+        "sensors_hinge_joints": False,
+        "sensors_ball_joints": False,
+        "sensors_angle_components": False,
     }
     return config 
 
@@ -193,7 +197,7 @@ if __name__ == "__main__":
     # TRY NOT TO MODIFY: start the game
     global_step = 0
     start_time = time.time()
-    print(envs.reset())
+    _ = envs.reset()
     next_obs = torch.Tensor(envs.reset()[0]).to(device)
     next_done = torch.zeros(args.num_envs).to(device)
     cost = 0 
@@ -202,10 +206,6 @@ if __name__ == "__main__":
     episode, cost_list, fear = 0, [], [] 
     traj_obs, traj_rewards, traj_actions, traj_costs = None, None, None, None
     for episode in range(args.num_episodes):
-        #if episode % args.change_config_schedule == 0:
-        #    print("Reinitializing environment configuration")
-        #    envs = gym.vector.SyncVectorEnv([make_env(args.env_id, args.seed + i, i, args.capture_video, run_name, args.gamma) for i in range(args.num_envs)])
-        #    next_obs = torch.Tensor(envs.reset()[0]).to(device)
         for step in range(0, args.num_steps):
             global_step += 1 * args.num_envs
             obs[step] = next_obs
@@ -218,7 +218,7 @@ if __name__ == "__main__":
             #time.sleep(1)
             # TRY NOT TO MODIFY: execute the game and log data.
             next_obs, reward, done, dummy, info = envs.step(action.cpu().numpy())
-            
+            next_obs = next_obs 
             rewards[step] = torch.tensor(reward).to(device).view(-1)
             next_obs, next_done = torch.Tensor(next_obs).to(device), torch.Tensor(done).to(device)
             return_ += args.gamma * reward 
@@ -244,10 +244,10 @@ if __name__ == "__main__":
                 torch.save(traj_rewards, os.path.join(storage_path, "rewards.pt"))
                 torch.save(traj_actions, os.path.join(storage_path, "actions.pt"))
                 torch.save(traj_costs,   os.path.join(storage_path, "costs.pt"))
-                wandb.save(os.path.join(storage_path, "obs.pt"))
-                wandb.save(os.path.join(storage_path, "rewards.pt"))
-                wandb.save(os.path.join(storage_path, "actions.pt"))
-                wandb.save(os.path.join(storage_path, "costs.pt"))
+                #wandb.save(os.path.join(storage_path, "obs.pt"))
+                #wandb.save(os.path.join(storage_path, "rewards.pt"))
+                #wandb.save(os.path.join(storage_path, "actions.pt"))
+                #wandb.save(os.path.join(storage_path, "costs.pt"))
                 break
     envs.close()
     writer.close()

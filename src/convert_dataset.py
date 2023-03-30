@@ -22,9 +22,9 @@ all_obs, all_fear, all_cost = None, None, None
 for run_name in os.listdir(args.data_path):
     print(run_name)
     run_path = os.path.join(args.data_path, run_name)
-    fear = torch.load(os.path.join(run_path, "fear.pt"))
-    cost = torch.load(os.path.join(run_path, "costs.pt"))
-    obs  = torch.load(os.path.join(run_path, "obs.pt"))
+    fear = torch.load(os.path.join(run_path, "fear.pt"), map_location=torch.device("cpu"))
+    cost = torch.load(os.path.join(run_path, "costs.pt"), map_location=torch.device("cpu"))
+    obs  = torch.load(os.path.join(run_path, "obs.pt"), map_location=torch.device("cpu"))
     print(cost.size(), fear.size(), obs.size())
     cost, fear, obs = torch.flatten(cost), torch.flatten(fear), torch.flatten(obs, start_dim=0, end_dim=1)
     ## Removing the data points where the fear cannot be calculated denoted by token 9999

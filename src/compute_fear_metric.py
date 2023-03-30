@@ -37,7 +37,7 @@ def calculate_fear(costs):
 for run_name in os.listdir(data_path):
     print(run_name)
     run_path = os.path.join(data_path, run_name)
-    costs = torch.load(os.path.join(run_path, "costs.pt")) 
+    costs = torch.load(os.path.join(run_path, "costs.pt"), map_location=torch.device('cpu')) 
     fear =  torch.zeros_like(costs)
     for episode in range(costs.size()[-1]):
         fear[:,episode] = calculate_fear(costs[:,episode])
