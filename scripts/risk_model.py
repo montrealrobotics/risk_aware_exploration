@@ -10,7 +10,8 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.distributions.normal import Normal
 import torch.nn.functional as F
-
+from torch.utils.data import Dataset
+from torch.utils.data import DataLoader
 #from torch.utils.tensorboard import SummaryWriter
 
 
@@ -38,7 +39,7 @@ def parse_args():
         help="learning rate for the optimizer")
     parser.add_argument("--batch_size", type=int, default=100, 
         help="batch size for the stochastic gradient descent" ) 
-    parser.add_argument("--validate-every", type=int, default=100,
+    parser.add_argument("--validate-every", type=int, default=10,
         help="validate every x SGD steps")
     parser.add_argument("--num_iterations", type=int, default=100, 
         help="number of times to go over the entire dataset during training")
@@ -64,6 +65,12 @@ class RiskEst(nn.Module):
         self.fc3 = nn.Linear(fc2_size, fc3_size)
         self.fc4 = nn.Linear(fc3_size, fc4_size)
         self.out = nn.Linear(fc4_size, out_size)
+        
+        ## Batch Norm layers
+        self.bnorm1 = nn.BatchNorm1d(fc1_size)
+        self.bnorm2 = nn.BatchNorm1d(fc2_size)
+        self.bnorm3 = nn.BatchNorm1d(fc3_size)
+        self.bnorm4 = nn.BatchNorm1d(fc4_size)
 
         # Activation functions
         self.relu = nn.ReLU()
@@ -72,10 +79,10 @@ class RiskEst(nn.Module):
         self.softmax = nn.Softmax(dim=1)
 
     def forward(self, x):
-        x = self.tanh(self.fc1(x))
-        x = self.tanh(self.fc2(x))
-        x = self.tanh(self.fc3(x))
-        x = self.tanh(self.fc4(x))
+        x = self.bnorm1(self.relu(self.fc1(x)))
+        x = self.bnorm2(self.relu(self.fc2(x)))
+        x = self.bnorm3(self.relu(self.fc3(x)))
+        x = self.bnorm4(self.relu(self.fc4(x)))
         out = self.softmax(self.out(x))
         return out 
 
@@ -108,111 +115,120 @@ class CNNRisk(nn.Module):
 
 
 
-args = parse_args()
+class TrajDataset(Dataset):
+    def __init__(self, root_dir, dataset_type="cost", episode_list=None):
+        self.root_dir = root_dir
+        self.dataset_type = dataset_type 
+        self.episode_list = episode_list
+        self.num_episodes = len(episode_list)
 
-wandb.init(
+    def __len__(self):
+        return self.num_episodes
+
+    def __getitem__(self, idx):
+        idx = idx % self.num_episodes 
+        ep_idx = self.episode_list[idx]
+        traj_x = torch.load(os.path.join(self.root_dir, "obs_%d.pt"%ep_idx)).squeeze()
+        if self.dataset_type=="cost":
+            traj_y = torch.load(os.path.join(self.root_dir, "costs_%d.pt"%ep_idx)).squeeze()
+        elif self.dataset_type=="fear":
+            traj_y = torch.load(os.path.join(self.root_dir, "fear_%d.pt"%ep_idx)).squeeze()
+
+        ## Randomly sample a point from the trajectory 
+        ## First decide if its going to be 0 or 1 
+        y = torch.zeros(2)
+        label = np.random.choice([0, 1])
+        indices = np.array(range(len(traj_x)))
+        if torch.sum(traj_y == label) > 0:
+            x = traj_x[np.random.choice(indices[traj_y.cpu().numpy()==label])]
+            y[label] = 1.
+        else:
+            idx = np.random.choice(indices)
+            x = traj_x[idx]
+            y[int(traj_y[idx])] = 1.
+        return x, y
+
+
+## Dataset and Dataloader 
+
+
+### Splitting episodes into train and test 
+def load_loaders(args):
+    num_episodes = 1000
+    episodes = list(range(1, num_episodes))
+    shuffle(episodes)
+
+    print(episodes)
+    train_episodes = episodes[:int(0.8*num_episodes)]
+    test_episodes  = episodes[int(0.8*num_episodes):]
+
+    train_dataset = TrajDataset(root_dir=args.data_path, dataset_type="cost", episode_list=train_episodes)
+    train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, generator=torch.Generator(device='cuda'))
+
+    test_dataset = TrajDataset(root_dir=args.data_path, dataset_type="cost", episode_list=test_episodes)
+    test_loader = DataLoader(test_dataset, batch_size=1, shuffle=False)
+
+    return train_loader, test_loader 
+
+class RiskTrainer():
+    def __init__(self, args, train_loader, test_loader, device=torch.device('cuda')):
+        self.args = args
+        self.test_schedule = args.validate_every 
+        self.train_loader  = train_loader
+        self.test_loader   = test_loader 
+        self.device = device
+        self.model = RiskEst(obs_size=54, fc1_size=args.fc1_size, fc2_size=args.fc2_size,\
+                            fc3_size=args.fc3_size, fc4_size=args.fc4_size, out_size=2)
+        self.criterion = nn.BCEWithLogitsLoss()
+        self.optim = optim.Adam(self.model.parameters(), args.learning_rate) 
+        self.scheduler = optim.lr_scheduler.ExponentialLR(self.optim, gamma=args.lr_schedule)
+        self.global_step = 0 
+
+
+    def train(self):
+        self.model.train()
+        for ep in range(self.args.num_iterations):
+            self.optim.step()
+            self.scheduler.step()
+            train_loss = 0
+            for batch in self.train_loader:
+                self.global_step += 1
+                pred_y = self.model(batch[0].to(self.device))
+                loss = self.criterion(pred_y, batch[1].to(self.device))
+                self.optim.zero_grad()
+                loss.backward()
+                self.optim.step()
+                with torch.no_grad():
+                    train_loss += loss.item()
+            print("Episode %d ---- Loss: %.4f"%(ep, train_loss))
+            wandb.log({"train_loss": train_loss})
+            if ep % self.test_schedule == 0:
+                self.test()
+
+    def test(self):
+        self.model.eval()
+        test_loss = 0 
+        for batch_idx, (X, y) in enumerate(self.test_loader):
+            with torch.no_grad():
+                pred_y = self.model(X.to(self.device))
+                test_loss += self.criterion(pred_y, y).item()
+        print("-----------------------------------------------------")
+        print("Test Loss: %.4f"%test_loss)
+        print("-----------------------------------------------------")
+        wandb.log({"test_loss": test_loss})
+        return test_loss
+
+
+
+if __name__ == "__main__":
+    torch.set_default_tensor_type('torch.cuda.FloatTensor')
+    args = parse_args()
+    wandb.init(
             project=args.wandb_project_name,
             entity=args.wandb_entity,
             sync_tensorboard=True,
             config=vars(args),
-        )
-
-input_data = torch.load(os.path.join(args.data_path, "all_obs.pt"))
-targets = torch.load(os.path.join(args.data_path, "all_cost.pt")) 
-
-## Visual data 
-
-#input_data = input_data[:, :7200]
-#input_data = input_data.reshape((input_data.size()[0], 40, 60, 3))
-#input_data = torch.transpose(input_data, 1, 3)
-
-#targets = torch.load(os.path.join(args.data_path, "all_fear.pt"))
-targets = targets.squeeze()
-
-
-print(input_data.size(), targets.size())
-
-
-max_data, min_data = torch.max(input_data), torch.min(input_data)
-max_targets, min_targets = torch.max(targets), torch.min(targets)
-
-
-## Max Min Normalization
-input_data = (input_data - min_data) / (max_data - min_data) 
-#targets = (targets - min_targets) / (max_targets - min_targets) 
-
-
-
-idx = list(range(input_data.size()[0]))
-shuffle(idx)
-train_idx = idx[:int(len(idx)*0.7)]
-test_idx = idx[int(len(idx)*0.7):]
-train_data, train_targets = input_data[train_idx, :], targets[train_idx, :]
-test_data,  test_targets  = input_data[test_idx,  :], targets[test_idx,  :]
-
-
-
-#risk_est = CNNRisk()
-risk_est = RiskEst(obs_size=input_data.size()[-1], fc1_size=args.fc1_size, fc2_size=args.fc2_size,\
-                            fc3_size=args.fc3_size, fc4_size=args.fc4_size, out_size=2)
-#mse = nn.MSELoss()
-index_targets = torch.argmax(targets, axis=1)
-print(torch.sum(index_targets==0)/torch.sum(index_targets==1))
-bce = nn.BCEWithLogitsLoss(pos_weight=torch.Tensor([1., torch.sum(index_targets==0)/torch.sum(index_targets==1)]).long().cuda())
-
-optimizer = optim.Adam(risk_est.parameters(), args.learning_rate)
-scheduler = optim.lr_scheduler.ExponentialLR(optimizer, 
-                          gamma=args.lr_schedule) # Multiplicative factor of learning rate decay.
-
-bce.to('cuda')
-#mse.to('cuda')
-risk_est.to('cuda')
-test_data.to('cuda')
-test_targets.to('cuda')
-
-print(train_data.size(), test_data.size())
-def evaluate_model(model, data, targets, batch_size=1000):
-    loss = torch.Tensor([0.0]).to('cuda') 
-    for batch_idx in range(int(data.size()[0]/batch_size)):
-        if batch_idx == data.size()[0]/batch_size: 
-            batch_data = data[batch_idx*batch_size:,:].to('cuda')
-            batch_targets = targets[batch_idx*batch_size:,:].to('cuda')
-        else:
-            batch_data = data[batch_idx*batch_size:(batch_idx+1)*batch_size,:].to('cuda')
-            batch_targets = targets[batch_idx*batch_size:(batch_idx+1)*batch_size,:].to('cuda')
-        batch_pred = model(batch_data)
-        print(torch.mean(batch_pred), torch.var(batch_pred))
-        loss += bce(batch_pred.to('cuda'), batch_targets.to('cuda')) 
-        print("Test MSE Loss : ", loss) 
-        return loss 
-
-
-def train_model(model, data, targets, test_data, test_targets, batch_size=args.batch_size):
-    global_step = 0 
-    for ep in range(args.num_iterations):
-        optimizer.step()
-        scheduler.step()
-        for batch_idx in range(int(data.size()[0]/batch_size)):
-            global_step += 1 
-            if batch_idx == data.size()[0]/batch_size:
-                batch_data = data[batch_idx*batch_size:,:].to('cuda')
-                batch_targets = targets[batch_idx*batch_size:,:].to('cuda')
-            else:
-                batch_data = data[batch_idx*batch_size:(batch_idx+1)*batch_size,:].to('cuda')
-                batch_targets = targets[batch_idx*batch_size:(batch_idx+1)*batch_size,:].to('cuda')
-            batch_pred = model(batch_data)
-            loss = bce(batch_pred, batch_targets)
-            optimizer.zero_grad()
-            loss.backward()
-            optimizer.step()
-            #print("Train Loss: ", loss)
-            wandb.log({"Train MSE": loss}, step=global_step)
-            if batch_idx % args.validate_every == 0:
-                test_loss = evaluate_model(model, test_data, test_targets)
-                wandb.log({"MSE": test_loss}, step=global_step)
-
-
-
-
-
-train_model(risk_est, train_data, train_targets, test_data, test_targets, args.batch_size)
+    )
+    train_loader, test_loader = load_loaders(args)
+    risktrainer = RiskTrainer(args, train_loader, test_loader) 
+    risktrainer.train()

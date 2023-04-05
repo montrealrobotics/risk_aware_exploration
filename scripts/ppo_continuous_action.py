@@ -245,8 +245,10 @@ if __name__ == "__main__":
     num_updates = args.total_timesteps // args.batch_size
     return_, cum_cost, ep_cost = 0.0, np.array([0.]), np.array([0.])
     cost, cost_list, fear = 0, [], []
+    episode = 0 
     traj_obs, traj_rewards, traj_actions, traj_costs = None, None, None, None
     for update in range(1, num_updates + 1):
+        ep_storage_path = os.path.join(storage_path, "ep_%d"%episode)
         # Annealing the rate if instructed to do so.
         if args.anneal_lr:
             frac = 1.0 - (update - 1.0) / num_updates
@@ -279,6 +281,7 @@ if __name__ == "__main__":
                 cost = torch.Tensor(np.array([info["final_info"][0]["cost"]])).to(device).view(-1)
                 ep_cost += np.array([info["final_info"][0]["cost"]]); cum_cost += np.array([info["final_info"][0]["cost"]])
             if done:
+                episode += 1 
                 wandb.log({"episodic_return": return_}, step=global_step)
                 wandb.log({"episodic_cost": ep_cost}, step=global_step)
                 wandb.log({"cummulative_cost": cum_cost}, step=global_step)
@@ -286,14 +289,14 @@ if __name__ == "__main__":
                 return_ = 0
                 ep_cost = np.array([0.])
                 #episode += 1
-                traj_obs = obs if traj_obs == None else torch.concat([traj_obs, obs], axis=1)
-                traj_rewards = rewards if traj_rewards == None else torch.concat([traj_rewards, rewards], axis=1)
-                traj_actions = actions if traj_actions == None else torch.concat([traj_actions, actions], axis=1)
-                traj_costs   = costs   if traj_costs   == None else torch.concat([traj_costs,   costs  ], axis=1)
-                torch.save(traj_obs, os.path.join(storage_path, "obs.pt"))
-                torch.save(traj_rewards, os.path.join(storage_path, "rewards.pt"))
-                torch.save(traj_actions, os.path.join(storage_path, "actions.pt"))
-                torch.save(traj_costs,   os.path.join(storage_path, "costs.pt"))
+                #traj_obs = obs if traj_obs == None else torch.concat([traj_obs, obs], axis=1)
+                #traj_rewards = rewards if traj_rewards == None else torch.concat([traj_rewards, rewards], axis=1)
+                #traj_actions = actions if traj_actions == None else torch.concat([traj_actions, actions], axis=1)
+                #traj_costs   = costs   if traj_costs   == None else torch.concat([traj_costs,   costs  ], axis=1)
+                torch.save(obs, os.path.join(storage_path, "obs_%d.pt"%episode))
+                torch.save(rewards, os.path.join(storage_path, "rewards_%d.pt"%episode))
+                torch.save(actions, os.path.join(storage_path, "actions_%d.pt"%episode))
+                torch.save(costs,   os.path.join(storage_path, "costs_%d.pt"%episode))
 
         # bootstrap value if not done
         with torch.no_grad():
