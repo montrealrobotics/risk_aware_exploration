@@ -14,14 +14,11 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.distributions.normal import Normal
 from torch.utils.tensorboard import SummaryWriter
-from safety_gym.envs.engine import Engine
 
 
 def parse_args():
     # fmt: off
     parser = argparse.ArgumentParser()
-    parser.add_argument("--storage_dir", type=str, default="./traj_single", 
-        help="storage directory with uniformly random policy") 
     parser.add_argument("--exp-name", type=str, default=os.path.basename(__file__).rstrip(".py"),
         help="the name of this experiment")
     parser.add_argument("--seed", type=int, default=1,
@@ -56,16 +53,10 @@ def parse_args():
         help="the discount factor gamma")
     parser.add_argument("--gae-lambda", type=float, default=0.95,
         help="the lambda for the general advantage estimation")
-    parser.add_argument("--hazards_num", type=int, default=0,
-        help="number of hazards in the environment")
-    parser.add_argument("--vases_num", type=int, default=0,
-        help="number of vases in the environment")
-    parser.add_argument("--pillars_num", type=int, default=0,
-        help="number of pillars in the environment")
-    parser.add_argument("--gremlins_num", type=int, default=0,
-        help="number of gremlins in the environment")
-    parser.add_argument("--task", type=str, default="goal", 
-        help="task to do in the environment (push / button / goal)")
+    parser.add_argument("--num-minibatches", type=int, default=32,
+        help="the number of mini-batches")
+    parser.add_argument("--update-epochs", type=int, default=10,
+        help="the K epochs to update the policy")
     parser.add_argument("--norm-adv", type=lambda x: bool(strtobool(x)), default=True, nargs="?", const=True,
         help="Toggles advantages normalization")
     parser.add_argument("--clip-coef", type=float, default=0.2,
@@ -76,8 +67,8 @@ def parse_args():
         help="coefficient of the entropy")
     parser.add_argument("--vf-coef", type=float, default=0.5,
         help="coefficient of the value function")
-    parser.add_argument("--change_config_schedule", type=int, default=5,
-        help="change the configuration of the environment every x episodes")
+    parser.add_argument("--max-grad-norm", type=float, default=0.5,
+        help="the maximum norm for the gradient clipping")
     parser.add_argument("--target-kl", type=float, default=None,
         help="the target KL divergence threshold")
     parser.add_argument("--model_name", type=str, default="ppo", 
@@ -85,37 +76,30 @@ def parse_args():
     parser.add_argument("--config_seed", type=int, default=1,
         help="seed to sample the right configuration.")
     args = parser.parse_args()
-    #args.batch_size = int(args.num_envs * args.num_steps)
-    #args.minibatch_size = int(args.batch_size // args.num_minibatches)
+    args.batch_size = int(args.num_envs * args.num_steps)
+    args.minibatch_size = int(args.batch_size // args.num_minibatches)
     # fmt: on
     return args
 
 
 
-def get_random_config(args):
+def get_random_config(seed):
+    np.random.seed(seed)
     config = {
         'robot_base': 'xmls/car.xml',
-        'task': args.task,
-        #'observe_goal_lidar': True,
-        #'observe_box_lidar': True,
-        #'observe_box_lidar': True,
-        #'observe_hazards': True,
-        #'observe_vases': True,
-        "sensors_obs": [],
+        'task': 'push',
+        'observe_goal_lidar': True,
+        'observe_box_lidar': True,
+        'observe_box_lidar': True,
+        'observe_hazards': True,
+        'observe_vases': True,
         'constrain_hazards': True,
-        'constrain_vases': True,
-        'constrain_gremlins': True,
-        'constrain_pillars': True,
-        'vases_velocity_cost': 0.0, 
-        'hazards_num': args.hazards_num,
-        'vases_num': args.vases_num,
-        'pillars_num': args.pillars_num,
-        'gremlins_num': args.gremlins_num,
-        'observation_flatten': True,
-        'observe_vision': True,
-        "sensors_hinge_joints": False,
-        "sensors_ball_joints": False,
-        "sensors_angle_components": False,
+        'hazards_num': np.random.choice(range(8)),
+        'vases_num': np.random.choice(range(8)),
+        'pillars_num': np.random.choice(range(8))
+        'gremlins_num': np.random.choice(range(8)),
+        'observation_flatten': False,
+        'observe_vision': True
     }
     return config 
 
@@ -124,11 +108,9 @@ def get_random_config(args):
 
 
 
-def make_env(args, seed, idx, capture_video, run_name, gamma):
+def make_env(env_id, seed, idx, capture_video, run_name, gamma):
     def thunk():
-        config = get_random_config(args)
-        print("Config: ", config)
-        env = Engine(config)
+        env = gym.make(env_id)
         env = gym.wrappers.RecordEpisodeStatistics(env)
         #if capture_video:
         #    if idx == 0:
@@ -148,8 +130,7 @@ def make_env(args, seed, idx, capture_video, run_name, gamma):
 
 if __name__ == "__main__":
     args = parse_args()
-    run_name = f"Uniform_H{args.hazards_num}__G{args.gremlins_num}__V{args.vases_num}__P{args.pillars_num}"
-    #run_name = f"{args.env_id}__{args.exp_name}__{args.seed}__{int(time.time())}"
+    run_name = f"{args.env_id}__{args.exp_name}__{args.seed}__{int(time.time())}"
     if args.track:
         import wandb
 
@@ -167,7 +148,7 @@ if __name__ == "__main__":
         "hyperparameters",
         "|param|value|\n|-|-|\n%s" % ("\n".join([f"|{key}|{value}|" for key, value in vars(args).items()])),
     )
-    storage_path = os.path.join(os.getcwd(), args.storage_dir, run_name)
+    storage_path = os.path.join(os.getcwd(), "traj", run_name)
     os.system("rm -rf %s"%(storage_path))
     os.makedirs(storage_path)
     # TRY NOT TO MODIFY: seeding
@@ -180,9 +161,8 @@ if __name__ == "__main__":
 
     # env setup
     envs = gym.vector.SyncVectorEnv(
-        [make_env(args, args.seed + i, i, args.capture_video, run_name, args.gamma) for i in range(args.num_envs)]
+        [make_env(args.env_id, args.seed + i, i, args.capture_video, run_name, args.gamma) for i in range(args.num_envs)]
     )
-    print(envs.single_action_space, envs.single_observation_space)
     assert isinstance(envs.single_action_space, gym.spaces.Box), "only continuous action space is supported"
 
     # ALGO Logic: Storage setup
@@ -197,10 +177,8 @@ if __name__ == "__main__":
     # TRY NOT TO MODIFY: start the game
     global_step = 0
     start_time = time.time()
-    _ = envs.reset()
     next_obs = torch.Tensor(envs.reset()[0]).to(device)
     next_done = torch.zeros(args.num_envs).to(device)
-    cost = 0 
     # num_updates = args.total_timesteps // args.batch_size
     return_, cum_cost, ep_cost = 0.0, np.array([0.]), np.array([0.])
     episode, cost_list, fear = 0, [], [] 
@@ -210,28 +188,25 @@ if __name__ == "__main__":
             global_step += 1 * args.num_envs
             obs[step] = next_obs
             dones[step] = next_done
-            costs[step] = cost
             action = torch.Tensor(envs.action_space.sample())
             actions[step] = action
-            #envs.render()
-            #import time
-            #time.sleep(1)
+
             # TRY NOT TO MODIFY: execute the game and log data.
             next_obs, reward, done, dummy, info = envs.step(action.cpu().numpy())
-            next_obs = next_obs 
+            
             rewards[step] = torch.tensor(reward).to(device).view(-1)
             next_obs, next_done = torch.Tensor(next_obs).to(device), torch.Tensor(done).to(device)
             return_ += args.gamma * reward 
             if not done:
-                cost = torch.Tensor(info["cost"]).to(device).view(-1)
+                costs[step] = torch.Tensor(info["cost"]).to(device).view(-1)
                 ep_cost += info["cost"]; cum_cost += info["cost"]
             else:
-                cost = torch.Tensor(np.array([info["final_info"][0]["cost"]])).to(device).view(-1)
+                costs[step] = torch.Tensor(np.array([info["final_info"][0]["cost"]])).to(device).view(-1)
                 ep_cost += np.array([info["final_info"][0]["cost"]]); cum_cost += np.array([info["final_info"][0]["cost"]])
             if done:
-                wandb.log({"episodic_return": return_}, step=global_step)
-                wandb.log({"episodic_cost": ep_cost}, step=global_step)
-                wandb.log({"cummulative_cost": cum_cost}, step=global_step)
+                #wandb.log({"episodic_return": return_}, step=global_step)
+                #wandb.log({"episodic_cost": ep_cost}, step=global_step)
+                #wandb.log({"cummulative_cost": cum_cost}, step=global_step)
                 print(f"global_step={global_step}, episodic_return={return_}")
                 return_ = 0
                 ep_cost = np.array([0.])
@@ -244,10 +219,6 @@ if __name__ == "__main__":
                 torch.save(traj_rewards, os.path.join(storage_path, "rewards.pt"))
                 torch.save(traj_actions, os.path.join(storage_path, "actions.pt"))
                 torch.save(traj_costs,   os.path.join(storage_path, "costs.pt"))
-                #wandb.save(os.path.join(storage_path, "obs.pt"))
-                #wandb.save(os.path.join(storage_path, "rewards.pt"))
-                #wandb.save(os.path.join(storage_path, "actions.pt"))
-                #wandb.save(os.path.join(storage_path, "costs.pt"))
                 break
     envs.close()
     writer.close()
