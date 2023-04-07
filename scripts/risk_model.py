@@ -1,5 +1,6 @@
 import sys
 import os
+import pickle
 import argparse
 import numpy as np
 from random import shuffle
@@ -101,7 +102,7 @@ class CNNRisk(nn.Module):
         self.conv2 = nn.Conv2d(6, 16, 5, padding="same")
         self.conv3 = nn.Conv2d(16, 32, 5, padding="same") 
         self.conv4 = nn.Conv2d(32, 64, 5, padding="same") 
-        self.fc1 = nn.Linear(64 * 7 * 5, 120)
+        self.fc1 = nn.Linear(64 * 14 * 14, 120)
         self.fc2 = nn.Linear(120, 84)
         self.fc3 = nn.Linear(84, 10)
         self.fc4 = nn.Linear(10, 2)
@@ -109,10 +110,10 @@ class CNNRisk(nn.Module):
 
     def forward(self, x):
         ## 60 * 40 
-        x = self.pool(F.relu(self.conv1(x))) ## 60 * 40 
-        x = self.pool(F.relu(self.conv2(x))) ## 30 * 20  
-        x = self.pool(F.relu(self.conv3(x))) ## 15  * 10
-        x = self.pool(F.relu(self.conv4(x))) ## 7 * 5
+        x = self.pool(F.relu(self.conv1(x))) ## 113 * 113 
+        x = self.pool(F.relu(self.conv2(x))) ## 56 * 56  
+        x = self.pool(F.relu(self.conv3(x))) ## 28  * 28
+        x = self.pool(F.relu(self.conv4(x))) ## 14 * 14
         x = torch.flatten(x, 1) # flatten all dimensions except batch
         x = F.relu(self.fc1(x))
         x = F.relu(self.fc2(x))
@@ -123,36 +124,24 @@ class CNNRisk(nn.Module):
 
 
 class TrajDataset(Dataset):
-    def __init__(self, root_dir, dataset_type="cost", episode_list=None):
+    def __init__(self, root_dir):
         self.root_dir = root_dir
-        self.dataset_type = dataset_type 
-        self.episode_list = episode_list
-        self.num_episodes = len(episode_list)
+        self.files_list = os.listdir(root_dir)
 
     def __len__(self):
-        return self.num_episodes
+        return len(self.files_list)*1000
 
     def __getitem__(self, idx):
-        idx = idx % self.num_episodes 
-        ep_idx = self.episode_list[idx]
-        traj_x = torch.load(os.path.join(self.root_dir, "obs_%d.pt"%ep_idx)).squeeze()
-        if self.dataset_type=="cost":
-            traj_y = torch.load(os.path.join(self.root_dir, "costs_%d.pt"%ep_idx)).squeeze()
-        elif self.dataset_type=="fear":
-            traj_y = torch.load(os.path.join(self.root_dir, "fear_%d.pt"%ep_idx)).squeeze()
-
-        ## Randomly sample a point from the trajectory 
-        ## First decide if its going to be 0 or 1 
-        y = torch.zeros(2)
-        label = np.random.choice([0, 1])
-        indices = np.array(range(len(traj_x)))
-        if torch.sum(traj_y == label) > 0:
-            x = traj_x[np.random.choice(indices[traj_y.cpu().numpy()==label])]
-            y[label] = 1.
-        else:
-            idx = np.random.choice(indices)
-            x = traj_x[idx]
-            y[int(traj_y[idx])] = 1.
+        idx = idx % len(self.files_list)
+        traj_idx = self.files_list[idx]
+        idx = np.random.randint(0, 1000)
+        x = Image.open(os.path.join(self.root_dir, traj_idx, "rgb", "%d.png"%idx))
+        x = torch.transpose(torch.Tensor(np.array(x)), 0, 2)
+        info = pickle.load(open(os.path.join(self.root_dir, traj_idx, "info", "%d.pkl"%idx), "rb"))
+        y =  torch.zeros(2)
+        # cost = 0 if info["cost"] == 0 else 1 
+        y[int(info["cost"])] = 1
+        print(y)
         return x, y
 
 class BinCostDataset(Dataset):
@@ -202,11 +191,13 @@ def load_loaders(args):
     train_episodes = episodes[:int(0.8*num_episodes)]
     test_episodes  = episodes[int(0.8*num_episodes):]
 
-    train_dataset = BinCostDataset(root_dir=os.path.join(args.data_path, "train"))
+    train_dataset = TrajDataset(root_dir=os.path.join(args.data_path, "train"))
+    # train_dataset = BinCostDataset(root_dir=os.path.join(args.data_path, "train"))
     # train_dataset = TrajDataset(root_dir=args.data_path, dataset_type="cost", episode_list=train_episodes)
     train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, generator=torch.Generator(device='cuda'))
 
-    test_dataset = BinCostDataset(root_dir=os.path.join(args.data_path, "test"))
+    test_dataset = TrajDataset(root_dir=os.path.join(args.data_path, "test"))
+    # test_dataset = BinCostDataset(root_dir=os.path.join(args.data_path, "test"))
     # test_dataset = TrajDataset(root_dir=args.data_path, dataset_type="cost", episode_list=test_episodes)
     test_loader = DataLoader(test_dataset, batch_size=1, shuffle=False)
 
@@ -272,6 +263,8 @@ class RiskTrainer():
         print("TP %.4f   FP: %.4f    FN: %.4f     TN: %.4f"%(tp, fp, fn, tn))
         print("-------------------------------------------------------------------------------------------------")
         wandb.log({"test_loss": test_loss})
+        wandb.log({"accuracy": accuracy, "precision": precision, "recall": recall, "f1_score": f1})
+        wandb.log({"tp": tp, "fp": fp, "tn": tn, "fn": fn})
         return test_loss
 
 
