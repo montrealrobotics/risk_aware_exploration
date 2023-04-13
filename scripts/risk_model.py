@@ -124,9 +124,10 @@ class CNNRisk(nn.Module):
 
 
 class TrajDataset(Dataset):
-    def __init__(self, root_dir):
+    def __init__(self, root_dir, dataset_name="train"):
         self.root_dir = root_dir
         self.files_list = os.listdir(root_dir)
+        self.dataset_name = dataset_name 
 
     def __len__(self):
         return len(self.files_list)*1000
@@ -141,8 +142,34 @@ class TrajDataset(Dataset):
         y =  torch.zeros(2)
         # cost = 0 if info["cost"] == 0 else 1 
         y[int(info["cost"])] = 1
-        print(y)
+        #if info["cost"] == 1 and self.dataset_name == "test":
+        #    print(y)
+        #print(y)
         return x, y
+    
+class CostDataset(Dataset):
+    def __init__(self, root_dir, dataset_name="train"):
+        self.root_dir = root_dir
+        self.safe_files = os.listdir(os.path.join(root_dir, "safe"))
+        self.unsafe_files = os.listdir(os.path.join(root_dir, "unsafe"))
+
+        self.dataset_name = dataset_name 
+
+    def __len__(self):
+        return int((len(self.safe_files) + len(self.unsafe_files)))
+
+    def __getitem__(self, idx):
+        y = np.random.choice([0, 1])
+        label = "safe" if y == 0 else "unsafe"
+        files = self.safe_files if y == 0 else self.unsafe_files
+        idx = idx % int(len(os.listdir(os.path.join(self.root_dir, label))))
+        X = Image.open(os.path.join(self.root_dir, label, files[idx]))
+        X = torch.transpose(torch.Tensor(np.array(X)), 0, 2)
+
+        Y = torch.zeros(2)
+        Y[y] = 1
+
+        return X, Y
 
 class BinCostDataset(Dataset):
     def __init__(self, root_dir, dataset_type="png"):
@@ -191,12 +218,14 @@ def load_loaders(args):
     train_episodes = episodes[:int(0.8*num_episodes)]
     test_episodes  = episodes[int(0.8*num_episodes):]
 
-    train_dataset = TrajDataset(root_dir=os.path.join(args.data_path, "train"))
+    train_dataset = CostDataset(root_dir=os.path.join(args.data_path, "train"))
+    # train_dataset = TrajDataset(root_dir=os.path.join(args.data_path, "train"))
     # train_dataset = BinCostDataset(root_dir=os.path.join(args.data_path, "train"))
     # train_dataset = TrajDataset(root_dir=args.data_path, dataset_type="cost", episode_list=train_episodes)
     train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, generator=torch.Generator(device='cuda'))
 
-    test_dataset = TrajDataset(root_dir=os.path.join(args.data_path, "test"))
+    test_dataset = CostDataset(root_dir=os.path.join(args.data_path, "test"), dataset_name="test")
+    # test_dataset = TrajDataset(root_dir=os.path.join(args.data_path, "test"), dataset_name="test")
     # test_dataset = BinCostDataset(root_dir=os.path.join(args.data_path, "test"))
     # test_dataset = TrajDataset(root_dir=args.data_path, dataset_type="cost", episode_list=test_episodes)
     test_loader = DataLoader(test_dataset, batch_size=1, shuffle=False)
@@ -250,6 +279,9 @@ class RiskTrainer():
                 y_pred, y_true = torch.argmax(pred_y.squeeze()), torch.argmax(y.squeeze())
                 pred.append(y_pred.item())
                 true.append(y_true.item())
+                #if y_pred.item() == 1 or y_true.item() == 1:
+                #    print(y_pred.item(), y_true.item())
+        pred, true = np.array(pred), np.array(true)
         f1 = f1_score(true, pred)
         recall = recall_score(true, pred)
         precision = precision_score(true, pred)
