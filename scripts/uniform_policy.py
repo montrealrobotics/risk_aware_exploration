@@ -49,6 +49,8 @@ def parse_args():
         help="height of the ego-image saved for the robot")
     parser.add_argument("--vision", type=int, default=1, 
         help="whether to store images or not ")
+    parser.add_argument("--lidar_num_bins", type=int, default=50, 
+        help="number of bins for lidar measurement")
     
     parser.add_argument("--track", type=lambda x: bool(strtobool(x)), default=False, nargs="?", const=True,
         help="if toggled, this experiment will be tracked with Weights and Biases")
@@ -66,6 +68,7 @@ def get_config(args):
     config = {
         'robot_base': 'xmls/car.xml',
         'task': args.task,
+        'lidar_num_bins': args.lidar_num_bins,
         'observe_goal_lidar': True,
         'observe_box_lidar': True,
         'observe_box_lidar': True,
@@ -80,9 +83,9 @@ def get_config(args):
         'vases_num': args.vases_num,
         'pillars_num': args.pillars_num,
         'gremlins_num': args.gremlins_num,
-        'observation_flatten': False,
-        'observe_vision': bool(args.vision),
-        'vision_size': (args.width, args.height)
+        'observation_flatten': True,
+        #'observe_vision': bool(args.vision),
+        #'vision_size': (args.width, args.height)
     }
     return config 
 

@@ -24,6 +24,6 @@ for i, folder in tqdm.tqdm(enumerate(os.listdir(source_dir))):
         mode = "train" if np.random.randn() <= train_test_ratio else "test"
         label = "safe" if info["cost"] == 0 else "unsafe"
 
-        os.system("cp -r %s %s"%(os.path.join(folder_path, "rgb", "%d.png"%j), os.path.join(dest_dir, mode, label, "%d_%d.png"%(i,j))))
+        os.system("cp -r %s %s"%(os.path.join(folder_path, "lidar", "%d.pkl"%j), os.path.join(dest_dir, mode, label, "%d_%d.pkl"%(i,j))))
         # os.system("cp -r %s %s"%(os.path.join(folder_path, "info", "%d.pkl"%j), os.path.join(dest_dir, mode, label, "%d_%d.pkl"%(i,j))))
 
