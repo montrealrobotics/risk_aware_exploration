@@ -9,6 +9,7 @@ from sklearn.metrics import *
 
 #import pybullet_envs  # noqa
 import wandb
+import tqdm
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -41,9 +42,9 @@ def parse_args():
         help="the entity (team) of wandb's project")
     parser.add_argument("--learning_rate", type=float, default=1e-4, 
         help="learning rate for the optimizer")
-    parser.add_argument("--batch_size", type=int, default=100, 
+    parser.add_argument("--batch_size", type=int, default=1000, 
         help="batch size for the stochastic gradient descent" ) 
-    parser.add_argument("--validate-every", type=int, default=10,
+    parser.add_argument("--validate-every", type=int, default=2000,
         help="validate every x SGD steps")
     parser.add_argument("--num_iterations", type=int, default=100, 
         help="number of times to go over the entire dataset during training")
@@ -163,11 +164,11 @@ class CostDataset(Dataset):
         label = "safe" if y == 0 else "unsafe"
         files = self.safe_files if y == 0 else self.unsafe_files
         idx = idx % int(len(os.listdir(os.path.join(self.root_dir, label))))
-        X = pickle.load(open(os.path.join(self.root_dir, label, files[idx]), "rb"))
-        #Image.open(os.path.join(self.root_dir, label, files[idx]))
-        X = np.hstack([k.ravel() for k in X.values()])
-        X = torch.Tensor(np.array(X))
-
+        #X = pickle.load(open(os.path.join(self.root_dir, label, files[idx]), "rb"))
+        X = Image.open(os.path.join(self.root_dir, label, files[idx]))
+        #X = np.hstack([k.ravel() for k in X.values()])
+        #X = torch.Tensor(np.array(X))
+        X = torch.transpose(torch.Tensor(np.array(X)), 2, 0)
         Y = torch.zeros(2)
         Y[y] = 1
 
@@ -224,13 +225,13 @@ def load_loaders(args):
     # train_dataset = TrajDataset(root_dir=os.path.join(args.data_path, "train"))
     # train_dataset = BinCostDataset(root_dir=os.path.join(args.data_path, "train"))
     # train_dataset = TrajDataset(root_dir=args.data_path, dataset_type="cost", episode_list=train_episodes)
-    train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, generator=torch.Generator(device='cuda'))
+    train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=10, generator=torch.Generator(device='cuda'))#, num_workers=10)
 
     test_dataset = CostDataset(root_dir=os.path.join(args.data_path, "test"), dataset_name="test")
     # test_dataset = TrajDataset(root_dir=os.path.join(args.data_path, "test"), dataset_name="test")
     # test_dataset = BinCostDataset(root_dir=os.path.join(args.data_path, "test"))
     # test_dataset = TrajDataset(root_dir=args.data_path, dataset_type="cost", episode_list=test_episodes)
-    test_loader = DataLoader(test_dataset, batch_size=1, shuffle=False)
+    test_loader = DataLoader(test_dataset, batch_size=1, shuffle=False, num_workers=10)
 
     return train_loader, test_loader 
 
@@ -241,9 +242,9 @@ class RiskTrainer():
         self.train_loader  = train_loader
         self.test_loader   = test_loader 
         self.device = device
-        #self.model = CNNRisk()
-        self.model = RiskEst(obs_size=54, fc1_size=args.fc1_size, fc2_size=args.fc2_size,\
-                             fc3_size=args.fc3_size, fc4_size=args.fc4_size, out_size=2)
+        self.model = CNNRisk()
+        #self.model = RiskEst(obs_size=54, fc1_size=args.fc1_size, fc2_size=args.fc2_size,\
+        #                     fc3_size=args.fc3_size, fc4_size=args.fc4_size, out_size=2)
         self.criterion = nn.BCEWithLogitsLoss(pos_weight=torch.Tensor([1, args.weight]).to(device))
         self.optim = optim.Adam(self.model.parameters(), args.learning_rate) 
         self.scheduler = optim.lr_scheduler.ExponentialLR(self.optim, gamma=args.lr_schedule)
@@ -255,20 +256,36 @@ class RiskTrainer():
         for ep in range(self.args.num_iterations):
             self.optim.step()
             self.scheduler.step()
-            train_loss = 0
-            for batch in self.train_loader:
-                self.global_step += 1
+            train_loss, best_val_loss = 0, 9999999
+            pred, true = [], []
+            for batch in tqdm.tqdm(self.train_loader):
                 pred_y = self.model(batch[0].to(self.device))
+                y_pred, y_true = torch.argmax(pred_y.squeeze(), axis=1), torch.argmax(batch[1].squeeze(), axis=1)
+                pred.extend(list(y_pred.detach().cpu().numpy()))
+                true.extend(list(y_true.detach().cpu().numpy()))
                 loss = self.criterion(pred_y, batch[1].to(self.device))
                 self.optim.zero_grad()
                 loss.backward()
                 self.optim.step()
                 with torch.no_grad():
                     train_loss += loss.item()
+                ## Validation Phase 
+                if self.global_step % self.test_schedule == 0:
+                    val_loss = self.test()
+                    if val_loss < best_val_loss:
+                        best_val_loss = val_loss
+                        torch.save(self.model.state_dict(), os.path.join(wandb.run.dir, "agent.pt"))
+                        wandb.save("agent.pt")
+                self.global_step += 1
+                ##---------------------------------------------------------------------------------------##
+            pred, true = np.array(pred), np.array(true)
+            accuracy, precision, recall = accuracy_score(true, pred), precision_score(true, pred), recall_score(true, pred)
+            print("-----------------------------Training Scores ----------------------------------------")
             print("Episode %d ---- Loss: %.4f"%(ep, train_loss))
-            wandb.log({"train_loss": train_loss})
-            if ep % self.test_schedule == 0:
-                self.test()
+            print("Accuracy %.4f | Precision %.4f | Recall %.4f"%(accuracy, precision, recall))
+            wandb.log({"train_loss": train_loss}, step=self.global_step)
+            wandb.log({"train_precision": precision, "train_accuracy": accuracy, "train_recall": recall}, step=self.global_step)
+
 
     def test(self):
         self.model.eval()
@@ -277,7 +294,7 @@ class RiskTrainer():
         for batch_idx, (X, y) in enumerate(self.test_loader):
             with torch.no_grad():
                 pred_y = self.model(X.to(self.device))
-                test_loss += self.criterion(pred_y, y).item()
+                test_loss += self.criterion(pred_y, y.to(self.device)).item()
                 y_pred, y_true = torch.argmax(pred_y.squeeze()), torch.argmax(y.squeeze())
                 pred.append(y_pred.item())
                 true.append(y_true.item())
@@ -296,14 +313,15 @@ class RiskTrainer():
         print()
         print("TP %.4f   FP: %.4f    FN: %.4f     TN: %.4f"%(tp, fp, fn, tn))
         print("-------------------------------------------------------------------------------------------------")
-        wandb.log({"test_loss": test_loss})
-        wandb.log({"accuracy": accuracy, "precision": precision, "recall": recall, "f1_score": f1})
-        wandb.log({"tp": tp, "fp": fp, "tn": tn, "fn": fn})
+        wandb.log({"test_loss": test_loss}, step=self.global_step)
+        wandb.log({"accuracy": accuracy, "precision": precision, "recall": recall, "f1_score": f1}, step=self.global_step)
+        wandb.log({"tp": tp, "fp": fp, "tn": tn, "fn": fn}, step=self.global_step)
         return test_loss
 
 
 
 if __name__ == "__main__":
+    torch.multiprocessing.set_start_method('spawn')# good solution !!!!
     torch.set_default_tensor_type('torch.cuda.FloatTensor')
     args = parse_args()
     wandb.init(

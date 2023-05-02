@@ -1,23 +1,69 @@
 import sys
 import os 
-import torch 
+#import torch 
 import argparse 
-#import tqdm
-
-
+import tqdm
+import pickle
+import numpy as np
 
 def parse_args():
     # fmt: off
     parser = argparse.ArgumentParser()
     parser.add_argument("--data_path", type=str, default=os.path.join(os.getcwd(),"traj"), help="path to the data directory")
+    parser.add_argument("--dest_path", type=str, default="./dest_traj", help="destination directory to store processed files") 
     parser.add_argument("--fear_radius", type=int, default=12, help="radius around the dangerous objects to consider fearful. ")
     parser.add_argument("--filter_end", type=lambda x: bool(strtobool(x)), default=True, nargs="?", const=True, help="whether to filter the end of the peisodes where no information exists.")
     parser.add_argument("--binary_fear", type=lambda x: bool(strtobool(x)), default=False, nargs="?", const=True, help="whether to keep fear as a binary 0 / 1 value.") 
     return parser.parse_args() 
 
 
-args = parse_args() 
 
+def operate_traj(episode, root_path, storage_path, fear_radius=12, split_train_test=True):
+    if split_train_test:
+        store = "train" if np.random.random() <= 0.8 else "test" 
+    traj_path = os.path.join(root_path, "traj_%d"%episode)
+    info_path = os.path.join(traj_path, "info")
+    rgb_path = os.path.join(traj_path, "rgb")
+    lidar_path = os.path.join(traj_path, "lidar")
+    flag, counter = 0, fear_radius
+    for i in reversed(range(len(os.listdir(info_path)))):
+        info = pickle.load(open(os.path.join(info_path, "%d.pkl"%i), "rb"))
+        if info["cost"] > 0: 
+            flag = 1
+            counter = fear_radius
+        elif flag == 1:
+            counter -= 1 
+        if counter <= 0: 
+            flag = 0 
+        if flag == 0: 
+            os.system("cp -r %s %s"%(os.path.join(rgb_path, "%d.png"%i), os.path.join(storage_path, store, "safe", "%d_%d.png"%(episode, i))))
+            #os.system("cp -r %s %s"%(os.path.join(lidar_path, "%d.pkl"%i), os.path.join(storage_path, store, "safe", "%d_%d.pkl"%(episode, i))))
+        else:
+            os.system("cp -r %s %s"%(os.path.join(rgb_path, "%d.png"%i), os.path.join(storage_path, store, "unsafe", "%d_%d.png"%(episode, i))))
+            #os.system("cp -r %s %s"%(os.path.join(lidar_path, "%d.pkl"%i), os.path.join(storage_path, store, "unsafe", "%d_%d.pkl"%(episode, i))))
+
+
+
+if __name__ == "__main__":
+    args = parse_args()
+    os.system("rm -rf %s"%(os.path.join(args.dest_path, "train", "safe")))
+    os.system("rm -rf %s"%(os.path.join(args.dest_path, "train", "unsafe")))
+    os.system("rm -rf %s"%(os.path.join(args.dest_path, "test", "safe")))
+    os.system("rm -rf %s"%(os.path.join(args.dest_path, "test", "unsafe")))
+
+    os.makedirs(os.path.join(args.dest_path, "train", "safe"))
+    os.makedirs(os.path.join(args.dest_path, "train", "unsafe"))
+    os.makedirs(os.path.join(args.dest_path, "test", "safe"))
+    os.makedirs(os.path.join(args.dest_path, "test", "unsafe"))
+
+    for traj in tqdm.tqdm(range(len(os.listdir(args.data_path)))):
+        operate_traj(traj, args.data_path, args.dest_path, args.fear_radius)
+
+
+
+
+
+'''
 all_obs, all_fear, all_cost = None, None, None
 for run_name in os.listdir(args.data_path):
     print(run_name)
@@ -62,3 +108,5 @@ print(all_fear.size(), all_obs.size())
 torch.save(all_obs, os.path.join(args.data_path, "all_obs.pt"))
 torch.save(all_cost, os.path.join(args.data_path, "all_cost.pt"))
 torch.save(all_fear, os.path.join(args.data_path, "all_fear.pt"))
+
+'''
