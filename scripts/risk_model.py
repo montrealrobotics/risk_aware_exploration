@@ -84,12 +84,13 @@ class RiskEst(nn.Module):
         self.sigmoid = nn.Sigmoid()
         self.tanh = nn.Tanh()
         self.softmax = nn.Softmax(dim=1)
+        self.dropout = nn.Dropout(0.2)
 
     def forward(self, x):
-        x = self.bnorm1(self.relu(self.fc1(x)))
-        x = self.bnorm2(self.relu(self.fc2(x)))
-        x = self.bnorm3(self.relu(self.fc3(x)))
-        x = self.bnorm4(self.relu(self.fc4(x)))
+        x = self.relu(self.fc1(x))
+        x = self.relu(sef.fc2(x))
+        x = self.relu(self.dropout(self.fc3(x)))
+        x = self.relu(self.dropout(self.fc4(x)))
         out = self.softmax(self.out(x))
         return out 
 
@@ -108,6 +109,7 @@ class CNNRisk(nn.Module):
         self.fc3 = nn.Linear(84, 10)
         self.fc4 = nn.Linear(10, 2)
         self.softmax = nn.Softmax(dim=1)
+        self.dropout = nn.Dropout(0.2)
 
     def forward(self, x):
         ## 60 * 40 
@@ -117,8 +119,8 @@ class CNNRisk(nn.Module):
         x = self.pool(F.relu(self.conv4(x))) ## 14 * 14
         x = torch.flatten(x, 1) # flatten all dimensions except batch
         x = F.relu(self.fc1(x))
-        x = F.relu(self.fc2(x))
-        x = F.relu(self.fc3(x)) 
+        x = F.relu(self.dropout(self.fc2(x)))
+        x = F.relu(self.dropout(self.fc3(x)))
         x = self.softmax(self.fc4(x))
         return x
 
