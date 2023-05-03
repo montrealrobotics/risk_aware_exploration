@@ -168,7 +168,7 @@ class CostDataset(Dataset):
         idx = idx % int(len(os.listdir(os.path.join(self.root_dir, label))))
         X = pickle.load(open(os.path.join(self.root_dir, label, files[idx]), "rb"))
         #X = Image.open(os.path.join(self.root_dir, label, files[idx]))
-        X = np.hstack([k.ravel() for k in X.values()])
+        #X = np.hstack([k.ravel() for k in X.values()])
         X = torch.Tensor(np.array(X))
         #X = torch.transpose(torch.Tensor(np.array(X)), 2, 0)
         Y = torch.zeros(2)

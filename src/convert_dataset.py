@@ -23,7 +23,7 @@ def operate_traj(episode, root_path, storage_path, fear_radius=12, split_train_t
         store = "train" if np.random.random() <= 0.8 else "test" 
     traj_path = os.path.join(root_path, "traj_%d"%episode)
     info_path = os.path.join(traj_path, "info")
-    rgb_path = os.path.join(traj_path, "rgb")
+    #rgb_path = os.path.join(traj_path, "rgb")
     lidar_path = os.path.join(traj_path, "lidar")
     flag, counter = 0, fear_radius
     for i in reversed(range(len(os.listdir(info_path)))):
@@ -36,11 +36,11 @@ def operate_traj(episode, root_path, storage_path, fear_radius=12, split_train_t
         if counter <= 0: 
             flag = 0 
         if flag == 0: 
-            os.system("cp -r %s %s"%(os.path.join(rgb_path, "%d.png"%i), os.path.join(storage_path, store, "safe", "%d_%d.png"%(episode, i))))
-            #os.system("cp -r %s %s"%(os.path.join(lidar_path, "%d.pkl"%i), os.path.join(storage_path, store, "safe", "%d_%d.pkl"%(episode, i))))
+            #os.system("cp -r %s %s"%(os.path.join(rgb_path, "%d.png"%i), os.path.join(storage_path, store, "safe", "%d_%d.png"%(episode, i))))
+            os.system("cp -r %s %s"%(os.path.join(lidar_path, "%d.pkl"%i), os.path.join(storage_path, store, "safe", "%d_%d.pkl"%(episode, i))))
         else:
-            os.system("cp -r %s %s"%(os.path.join(rgb_path, "%d.png"%i), os.path.join(storage_path, store, "unsafe", "%d_%d.png"%(episode, i))))
-            #os.system("cp -r %s %s"%(os.path.join(lidar_path, "%d.pkl"%i), os.path.join(storage_path, store, "unsafe", "%d_%d.pkl"%(episode, i))))
+            #os.system("cp -r %s %s"%(os.path.join(rgb_path, "%d.png"%i), os.path.join(storage_path, store, "unsafe", "%d_%d.png"%(episode, i))))
+            os.system("cp -r %s %s"%(os.path.join(lidar_path, "%d.pkl"%i), os.path.join(storage_path, store, "unsafe", "%d_%d.pkl"%(episode, i))))
 
 
 

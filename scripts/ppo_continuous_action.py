@@ -14,6 +14,7 @@ import torch.optim as optim
 from torch.distributions.normal import Normal
 from safety_gym.envs.engine import Engine
 from torch.utils.tensorboard import SummaryWriter
+import torch.nn.functional as F
 
 
 def parse_args():
@@ -116,8 +117,9 @@ def get_random_config(args):
         'vases_num': args.vases_num,
         'pillars_num': args.pillars_num,
         'gremlins_num': args.gremlins_num,
-        'observation_flatten': True,
-        #'observe_vision': True,
+        'observation_flatten': False,
+        'observe_vision': True,
+        'vision_size': (227, 227)
         #"sensors_hinge_joints": False,
         #"sensors_ball_joints": False,
         #"sensors_angle_components": False,
@@ -134,11 +136,11 @@ def make_env(args, seed, idx, capture_video, run_name, gamma):
         #if capture_video:
         #    if idx == 0:
         #        env = gym.wrappers.RecordVideo(env, f"videos/{run_name}")
-        env = gym.wrappers.ClipAction(env)
-        env = gym.wrappers.NormalizeObservation(env)
-        env = gym.wrappers.TransformObservation(env, lambda obs: np.clip(obs, -10, 10))
-        env = gym.wrappers.NormalizeReward(env, gamma=gamma)
-        env = gym.wrappers.TransformReward(env, lambda reward: np.clip(reward, -10, 10))
+        #env = gym.wrappers.ClipAction(env)
+        #env = gym.wrappers.NormalizeObservation(env)
+        #env = gym.wrappers.TransformObservation(env, lambda obs: np.clip(obs, -10, 10))
+        #env = gym.wrappers.NormalizeReward(env, gamma=gamma)
+        #env = gym.wrappers.TransformReward(env, lambda reward: np.clip(reward, -10, 10))
         env.seed(seed)
         env.action_space.seed(seed)
         env.observation_space.seed(seed)
@@ -154,18 +156,39 @@ def layer_init(layer, std=np.sqrt(2), bias_const=0.0):
     return layer
 
 
+class StateEncoder(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.conv1 = nn.Conv2d(3, 6, 5, padding="same")
+        self.pool = nn.MaxPool2d(2, 2)
+        self.conv2 = nn.Conv2d(6, 16, 5, padding="same")
+        self.conv3 = nn.Conv2d(16, 32, 5, padding="same")
+        self.conv4 = nn.Conv2d(32, 64, 5, padding="same")
+        self.fc1 = nn.Linear(64 * 14 * 14, 120)
+
+    def forward(self, x):
+        x = self.pool(F.relu(self.conv1(x)))  ## 113 * 113
+        x = self.pool(F.relu(self.conv2(x)))  ## 56  * 56 
+        x = self.pool(F.relu(self.conv3(x)))  ## 28  * 28
+        x = self.pool(F.relu(self.conv4(x)))  ## 14  * 14 
+        x = torch.flatten(x, 1) # flatten all dimensions except batch
+        x = F.relu(self.fc1(x))
+        return x 
+
+
 class Agent(nn.Module):
     def __init__(self, envs):
         super().__init__()
+        self.state_encoder = StateEncoder()
         self.critic = nn.Sequential(
-            layer_init(nn.Linear(np.array(envs.single_observation_space.shape).prod(), 64)),
+            layer_init(nn.Linear(120, 64)),
             nn.Tanh(),
             layer_init(nn.Linear(64, 64)),
             nn.Tanh(),
             layer_init(nn.Linear(64, 1), std=1.0),
         )
         self.actor_mean = nn.Sequential(
-            layer_init(nn.Linear(np.array(envs.single_observation_space.shape).prod(), 64)),
+            layer_init(nn.Linear(120, 64)),
             nn.Tanh(),
             layer_init(nn.Linear(64, 64)),
             nn.Tanh(),
@@ -174,9 +197,13 @@ class Agent(nn.Module):
         self.actor_logstd = nn.Parameter(torch.zeros(1, np.prod(envs.single_action_space.shape)))
 
     def get_value(self, x):
-        return self.critic(x)
+        x = torch.transpose(x, 1, 3)
+        return self.critic(self.state_encoder(x))
 
     def get_action_and_value(self, x, action=None):
+        x = torch.transpose(x, 1, 3)
+        x = self.state_encoder(x) 
+        #print(x.size())
         action_mean = self.actor_mean(x)
         action_logstd = self.actor_logstd.expand_as(action_mean)
         action_std = torch.exp(action_logstd)
@@ -227,9 +254,9 @@ if __name__ == "__main__":
 
     agent = Agent(envs).to(device)
     optimizer = optim.Adam(agent.parameters(), lr=args.learning_rate, eps=1e-5)
-
+    print(envs.single_observation_space['vision'].shape)
     # ALGO Logic: Storage setup
-    obs = torch.zeros((args.num_steps, args.num_envs) + envs.single_observation_space.shape).to(device)
+    obs = torch.zeros((args.num_steps, args.num_envs) + envs.single_observation_space['vision'].shape).to(device)
     actions = torch.zeros((args.num_steps, args.num_envs) + envs.single_action_space.shape).to(device)
     logprobs = torch.zeros((args.num_steps, args.num_envs)).to(device)
     rewards = torch.zeros((args.num_steps, args.num_envs)).to(device)
@@ -240,7 +267,7 @@ if __name__ == "__main__":
     # TRY NOT TO MODIFY: start the game
     global_step = 0
     start_time = time.time()
-    next_obs = torch.Tensor(envs.reset()[0]).to(device)
+    next_obs = torch.Tensor(envs.reset()[0]['vision']).to(device)
     next_done = torch.zeros(args.num_envs).to(device)
     num_updates = args.total_timesteps // args.batch_size
     return_, cum_cost, ep_cost = 0.0, np.array([0.]), np.array([0.])
@@ -270,7 +297,7 @@ if __name__ == "__main__":
 
             # TRY NOT TO MODIFY: execute the game and log data.
             next_obs, reward, done, dummy, info = envs.step(action.cpu().numpy())
-            
+            next_obs = next_obs['vision']
             rewards[step] = torch.tensor(reward).to(device).view(-1)
             next_obs, next_done = torch.Tensor(next_obs).to(device), torch.Tensor(done).to(device)
             return_ += args.gamma * reward 
@@ -315,7 +342,7 @@ if __name__ == "__main__":
             returns = advantages + values
 
         # flatten the batch
-        b_obs = obs.reshape((-1,) + envs.single_observation_space.shape)
+        b_obs = obs.reshape((-1,) + envs.single_observation_space['vision'].shape)
         b_logprobs = logprobs.reshape(-1)
         b_actions = actions.reshape((-1,) + envs.single_action_space.shape)
         b_advantages = advantages.reshape(-1)
