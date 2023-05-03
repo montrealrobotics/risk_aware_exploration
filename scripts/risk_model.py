@@ -88,7 +88,7 @@ class RiskEst(nn.Module):
 
     def forward(self, x):
         x = self.relu(self.fc1(x))
-        x = self.relu(sef.fc2(x))
+        x = self.relu(self.fc2(x))
         x = self.relu(self.dropout(self.fc3(x)))
         x = self.relu(self.dropout(self.fc4(x)))
         out = self.softmax(self.out(x))
@@ -245,7 +245,7 @@ class RiskTrainer():
         self.test_loader   = test_loader 
         self.device = device
         #self.model = CNNRisk()
-        self.model = RiskEst(obs_size=54, fc1_size=args.fc1_size, fc2_size=args.fc2_size,\
+        self.model = RiskEst(obs_size=174, fc1_size=args.fc1_size, fc2_size=args.fc2_size,\
                              fc3_size=args.fc3_size, fc4_size=args.fc4_size, out_size=2)
         self.criterion = nn.BCEWithLogitsLoss(pos_weight=torch.Tensor([1, args.weight]).to(device))
         self.optim = optim.Adam(self.model.parameters(), args.learning_rate) 
