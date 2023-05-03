@@ -160,7 +160,7 @@ if __name__ == "__main__":
                 im.save(os.path.join(traj_path, "rgb", "%d.png"%step))
                 del next_obs['vision']
             info_dict = {'reward': reward, 'done': done, 'cost': cost, 'prev_action': action} #, 'prev_obs_rgb': obs['vision']}
-            info_dict.update(obs)
+            #info_dict.update(obs)
             ## Saving the info for this step
             f1 = open(os.path.join(traj_path, "info", "%d.pkl"%step), "wb")
             pickle.dump(info_dict, f1, protocol=pickle.HIGHEST_PROTOCOL)

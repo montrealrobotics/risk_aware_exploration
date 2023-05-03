@@ -18,7 +18,7 @@ for label in ["safe", "unsafe"]:
 
 for i, folder in tqdm.tqdm(enumerate(os.listdir(source_dir))):
     folder_path = os.path.join(source_dir, "traj_%d"%i)
-    for j, file_name in enumerate(os.listdir(os.path.join(folder_path, "rgb"))):
+    for j, file_name in enumerate(os.listdir(os.path.join(folder_path, "lidar"))):
         info = pickle.load(open(os.path.join(folder_path, "info", "%d.pkl"%j), "rb"))
 
         mode = "train" if np.random.randn() <= train_test_ratio else "test"

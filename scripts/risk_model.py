@@ -166,11 +166,11 @@ class CostDataset(Dataset):
         label = "safe" if y == 0 else "unsafe"
         files = self.safe_files if y == 0 else self.unsafe_files
         idx = idx % int(len(os.listdir(os.path.join(self.root_dir, label))))
-        #X = pickle.load(open(os.path.join(self.root_dir, label, files[idx]), "rb"))
-        X = Image.open(os.path.join(self.root_dir, label, files[idx]))
-        #X = np.hstack([k.ravel() for k in X.values()])
-        #X = torch.Tensor(np.array(X))
-        X = torch.transpose(torch.Tensor(np.array(X)), 2, 0)
+        X = pickle.load(open(os.path.join(self.root_dir, label, files[idx]), "rb"))
+        #X = Image.open(os.path.join(self.root_dir, label, files[idx]))
+        X = np.hstack([k.ravel() for k in X.values()])
+        X = torch.Tensor(np.array(X))
+        #X = torch.transpose(torch.Tensor(np.array(X)), 2, 0)
         Y = torch.zeros(2)
         Y[y] = 1
 
@@ -244,9 +244,9 @@ class RiskTrainer():
         self.train_loader  = train_loader
         self.test_loader   = test_loader 
         self.device = device
-        self.model = CNNRisk()
-        #self.model = RiskEst(obs_size=54, fc1_size=args.fc1_size, fc2_size=args.fc2_size,\
-        #                     fc3_size=args.fc3_size, fc4_size=args.fc4_size, out_size=2)
+        #self.model = CNNRisk()
+        self.model = RiskEst(obs_size=54, fc1_size=args.fc1_size, fc2_size=args.fc2_size,\
+                             fc3_size=args.fc3_size, fc4_size=args.fc4_size, out_size=2)
         self.criterion = nn.BCEWithLogitsLoss(pos_weight=torch.Tensor([1, args.weight]).to(device))
         self.optim = optim.Adam(self.model.parameters(), args.learning_rate) 
         self.scheduler = optim.lr_scheduler.ExponentialLR(self.optim, gamma=args.lr_schedule)
