@@ -189,13 +189,13 @@ risk_est.load_state_dict(torch.load("./models/risk_model.pt", map_location=devic
 class Agent(nn.Module):
     def __init__(self, envs):
         super().__init__()
-        self.critic = nn.Sequential(
-            layer_init(nn.Linear(np.array(envs.single_observation_space.shape).prod(), 64)),
-            nn.Tanh(),
-            layer_init(nn.Linear(64, 64)),
-            nn.Tanh(),
-            layer_init(nn.Linear(64, 1), std=1.0),
-        )
+        #self.critic = nn.Sequential(
+        #    layer_init(nn.Linear(np.array(envs.single_observation_space.shape).prod(), 64)),
+        #    nn.Tanh(),
+        #    layer_init(nn.Linear(64, 64)),
+        #    nn.Tanh(),
+        #    layer_init(nn.Linear(64, 1), std=1.0),
+        #)
         #self.risk_est = RiskEst(obs_size=np.array(envs.single_observation_space.shape).prod())
         self.risk_encoder = nn.Sequential(
             layer_init(nn.Linear(2, 12)),
@@ -210,11 +210,22 @@ class Agent(nn.Module):
         self.actor_fc1 = layer_init(nn.Linear(np.array(envs.single_observation_space.shape).prod(), 64))
         self.actor_fc2 = layer_init(nn.Linear(76, 76))
         self.actor_fc3 = layer_init(nn.Linear(76, np.prod(envs.single_action_space.shape)), std=0.01)
+        
+        self.critic_fc1 = layer_init(nn.Linear(np.array(envs.single_observation_space.shape).prod(), 64))
+        self.critic_fc2 = layer_init(nn.Linear(76, 76))
+        self.critic_fc3 = layer_init(nn.Linear(76, 1), std=0.01)
+
         self.tanh = nn.Tanh() 
         self.actor_logstd = nn.Parameter(torch.zeros(1, np.prod(envs.single_action_space.shape)))
 
-    def get_value(self, x):
-        return self.critic(x)
+    def get_value(self, x, risk):
+        risk_enc = self.risk_encoder(risk)
+        x1 = self.tanh(self.critic_fc1(x))
+        x2 = torch.cat([risk_enc, x1], axis=1)
+        x3 = self.tanh(self.critic_fc2(x2))
+        val = self.critic_fc3(x3)
+
+        return val
 
     def get_action_and_value(self, x, risk, action=None):
         risk_enc = self.risk_encoder(risk)
@@ -228,7 +239,7 @@ class Agent(nn.Module):
         probs = Normal(action_mean, action_std)
         if action is None:
             action = probs.sample()
-        return action, probs.log_prob(action).sum(1), probs.entropy().sum(1), self.critic(x)
+        return action, probs.log_prob(action).sum(1), probs.entropy().sum(1), self.get_value(x, risk)
 
 
 if __name__ == "__main__":
@@ -341,8 +352,12 @@ if __name__ == "__main__":
                  
         # bootstrap value if not done
         with torch.no_grad():
+            risk = torch.zeros(([1,2])).to(device)
+            if args.use_risk_model:
+                id_risk = torch.argmax(risk_est(next_obs), axis=1)
+                risk[:, id_risk] = 1
             #print(next_obs.size())
-            next_value = agent.get_value(next_obs).reshape(1, -1)
+            next_value = agent.get_value(next_obs, risk).reshape(1, -1)
             advantages = torch.zeros_like(rewards).to(device)
             lastgaelam = 0
             for t in reversed(range(args.num_steps)):
