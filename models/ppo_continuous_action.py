@@ -197,7 +197,10 @@ class Agent(nn.Module):
         #    layer_init(nn.Linear(64, 1), std=1.0),
         #)
         #self.risk_est = RiskEst(obs_size=np.array(envs.single_observation_space.shape).prod())
-        self.risk_encoder = nn.Sequential(
+        self.risk_encoder_actor = nn.Sequential(
+            layer_init(nn.Linear(2, 12)),
+            nn.Tanh())
+        self.risk_encoder_critic = nn.Sequential(
             layer_init(nn.Linear(2, 12)),
             nn.Tanh())
         #self.actor_mean = nn.Sequential(
@@ -219,7 +222,7 @@ class Agent(nn.Module):
         self.actor_logstd = nn.Parameter(torch.zeros(1, np.prod(envs.single_action_space.shape)))
 
     def get_value(self, x, risk):
-        risk_enc = self.risk_encoder(risk)
+        risk_enc = self.risk_encoder_critic(risk)
         x1 = self.tanh(self.critic_fc1(x))
         x2 = torch.cat([risk_enc, x1], axis=1)
         x3 = self.tanh(self.critic_fc2(x2))
@@ -228,7 +231,7 @@ class Agent(nn.Module):
         return val
 
     def get_action_and_value(self, x, risk, action=None):
-        risk_enc = self.risk_encoder(risk)
+        risk_enc = self.risk_encoder_actor(risk)
         x1 = self.tanh(self.actor_fc1(x))
         x2 = torch.cat([risk_enc, x1], axis=1)
         x3 = self.tanh(self.actor_fc2(x2))
