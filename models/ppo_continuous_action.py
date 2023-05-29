@@ -182,7 +182,7 @@ class Agent(nn.Module):
             action = probs.sample()
         return action, probs.log_prob(action).sum(1), probs.entropy().sum(1), self.get_value(x, risk)
 
-@hydra.main(version_base=None, config_path="../conf", config_name="config")
+#@hydra.main(version_base=None, config_path="../conf", config_name="config")
 def train(cfg):
     run_name = f"{cfg.ppo.env_id}__{cfg.ppo.exp_name}__{cfg.ppo.seed}__{int(time.time())}"
 
