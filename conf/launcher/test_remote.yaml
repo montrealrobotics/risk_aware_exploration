@@ -1,0 +1,19 @@
+# @package _global_
+defaults:
+  - remote
+
+hydra:
+  launcher:
+    cpus_per_task: 6  # task = process, cpus = threads if hyperthreading enabled
+    python: singularity exec --nv -H $HOME:/home -B /localscratch -B $CLUSTER_PATH -B /Tmp /<PATH_TO_IMAGE>/image.sif python3
+    tasks_per_node: 1  # num of tasks to spawn in each node (will repeat each task in a job array in each node)
+    mem_gb: 16  # RAM per node (not GPU memory) in GB
+    gres: gpu:1               # Number of gpus for requested job. Can also specify which GPU
+    array_parallelism: 10  # max num of tasks to run in parallel (via job array) with above config
+    additional_parameters:
+      time: 0-03:00:00  # maximum wall time allocated for the job (D-H:MM:SS)
+      mail-type: ARRAY_TASKS,FAIL,TIME_LIMIT
+
+    # A list of commands to run in sbatch befure running srun
+    setup:
+      - CLUSTER_PATH="$SCRATCH"
