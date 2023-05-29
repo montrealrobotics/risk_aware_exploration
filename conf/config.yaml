@@ -1,6 +1,6 @@
 defaults:
   - _self_
-  - launcher: local 
+  - launcher: remote 
   - hparams_search: optuna
 
 
@@ -29,4 +29,7 @@ ppo:
   max_grad_norm: 0.5 
   target_kl: None
   use_risk_model: True 
-  
+ 
+
+seed: 12345
+ 

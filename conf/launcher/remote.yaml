@@ -14,8 +14,8 @@ hydra:
     # resources between each other
     _target_: hydra_plugins.hydra_submitit_launcher.submitit_launcher.SlurmLauncher
 #    timeout_min: 60
-    partition: null
-    python: ???
+    partition: long
+    python: singularity exec --nv -B $HOME/scratch/projects/risk_aware_exploration:/risk_aware_exploration --writable $HOME/scratch/projects/containers/safety_gym_May27/ python3 
     cpus_per_task: 3          # task = process, cpus = threads if hyperthreading enabled
     gres: gpu:1               # Number of gpus for requested job. Can also specify which GPU
     nodes: 1                  # Number of nodes for job
@@ -35,4 +35,9 @@ hydra:
     max_num_timeout: 0
 
     # A list of commands to run in sbatch befure running srun
-    setup: CLUSTER_PATH="$SCRATCH"
+    setup: 
+        - CLUSTER_PATH="$SCRATCH"
+        - module load singularity
+        - module load python
+        - module load pytorch/1.8.1 
+

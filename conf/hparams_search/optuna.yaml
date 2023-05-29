@@ -22,7 +22,7 @@ hydra:
     n_jobs: ???
 
     # 'minimize' or 'maximize' the objective
-    direction: ${metric.minimize_maximize}
+    direction: minimize
 
     # total number of runs that will be executed - i.e. number of jobs
     n_trials: ???
