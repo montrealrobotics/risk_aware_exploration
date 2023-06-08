@@ -254,8 +254,6 @@ class Agent(nn.Module):
 
 if __name__ == "__main__":
     args = parse_args()
-    #run_name = f"{args.env_id}__{args.exp_name}__{args.seed}__{int(time.time())}"
-    #run_name = f"Uniform_H{args.hazards_num}__G{args.gremlins_num}__V{args.vases_num}__P{args.pillars_num}"
     storage_path =  args.storage_dir
     os.system("rm -rf %s"%(storage_path))
     os.makedirs(storage_path) 
@@ -267,9 +265,6 @@ if __name__ == "__main__":
             entity=args.wandb_entity,
             sync_tensorboard=True,
             config=vars(args),
-     #       name=run_name,
-            #monitor_gym=True,
-            #save_code=True,
         )
     writer = SummaryWriter("runs/new_run")
     writer.add_text(
@@ -287,8 +282,6 @@ if __name__ == "__main__":
 
     # env setup
     envs = make_env(args, args.seed, 0, args.capture_video, "run_name", args.gamma)
-
-    # assert isinstance(envs.single_action_space, gym.spaces.Box), "only continuous action space is supported"
 
     agent = Agent(envs).to(device)
     optimizer = optim.Adam(agent.parameters(), lr=args.learning_rate, eps=1e-5)
@@ -377,28 +370,12 @@ if __name__ == "__main__":
             # if not done:
             cost = torch.Tensor([info["cost"]]).to(device).view(-1)
             ep_cost += info["cost"]; cum_cost += info["cost"]
-            # # else:
-            #     print(info)
-            #     cost = torch.Tensor(np.array([info["final_info"][0]["cost"]])).to(device).view(-1)
-            #     ep_cost += np.array([info["final_info"][0]["cost"]]); cum_cost += np.array([info["final_info"][0]["cost"]])
             if done:
                 episode += 1 
-                # wandb.log({"episodic_return": return_}, step=global_step)
-                # wandb.log({"episodic_cost": ep_cost}, step=global_step)
-                # wandb.log({"cummulative_cost": cum_cost}, step=global_step)
                 print(f"global_step={global_step}, episodic_return={return_}, episodic_cost={ep_cost}")
                 return_ = 0
                 ep_cost = np.array([0.])
                 envs.reset()
-                #episode += 1
-                #traj_obs = obs if traj_obs == None else torch.concat([traj_obs, obs], axis=1)
-                #traj_rewards = rewards if traj_rewards == None else torch.concat([traj_rewards, rewards], axis=1)
-                #traj_actions = actions if traj_actions == None else torch.concat([traj_actions, actions], axis=1)
-                #traj_costs   = costs   if traj_costs   == None else torch.concat([traj_costs,   costs  ], axis=1)
-                torch.save(obs, os.path.join(storage_path, "obs_%d.pt"%episode))
-                torch.save(rewards, os.path.join(storage_path, "rewards_%d.pt"%episode))
-                torch.save(actions, os.path.join(storage_path, "actions_%d.pt"%episode))
-                torch.save(costs,   os.path.join(storage_path, "costs_%d.pt"%episode))
                 break
 
         # bootstrap value if not done
@@ -484,18 +461,6 @@ if __name__ == "__main__":
         y_pred, y_true = b_values.cpu().numpy(), b_returns.cpu().numpy()
         var_y = np.var(y_true)
         explained_var = np.nan if var_y == 0 else 1 - np.var(y_true - y_pred) / var_y
-
-        # TRY NOT TO MODIFY: record rewards for plotting purposes
-        # writer.add_scalar("charts/learning_rate", optimizer.param_groups[0]["lr"], global_step)
-        # writer.add_scalar("losses/value_loss", v_loss.item(), global_step)
-        # writer.add_scalar("losses/policy_loss", pg_loss.item(), global_step)
-        # writer.add_scalar("losses/entropy", entropy_loss.item(), global_step)
-        # writer.add_scalar("losses/old_approx_kl", old_approx_kl.item(), global_step)
-        # writer.add_scalar("losses/approx_kl", approx_kl.item(), global_step)
-        # writer.add_scalar("losses/clipfrac", np.mean(clipfracs), global_step)
-        # writer.add_scalar("losses/explained_variance", explained_var, global_step)
-        # print("SPS:", int(global_step / (time.time() - start_time)))
-        # writer.add_scalar("charts/SPS", int(global_step / (time.time() - start_time)), global_step)
 
     envs.close()
     writer.close()
