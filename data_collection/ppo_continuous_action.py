@@ -15,6 +15,9 @@ from torch.distributions.normal import Normal
 from safety_gym.envs.engine import Engine
 from torch.utils.tensorboard import SummaryWriter
 import torch.nn.functional as F
+from PIL import Image
+import pickle 
+# import wandb 
 
 
 def parse_args():
@@ -77,7 +80,7 @@ def parse_args():
     parser.add_argument("--model_name", type=str, default="ppo", 
         help="name of the model" ) 
     ### Environment specifications 
-    parser.add_argument("--hazards_num", type=int, default=0,
+    parser.add_argument("--hazards_num", type=int, default=4,
         help="number of hazards in the environment")
     parser.add_argument("--vases_num", type=int, default=0,
         help="number of vases in the environment")
@@ -123,7 +126,7 @@ def get_config(args):
         'vases_num': args.vases_num,
         'pillars_num': args.pillars_num,
         'gremlins_num': args.gremlins_num,
-        'observation_flatten': True,
+        'observation_flatten': False,
         'observe_vision': bool(args.vision),
         'vision_size': (args.width, args.height)
     }
@@ -152,7 +155,7 @@ def get_random_config1(args):
         'pillars_num': args.pillars_num,
         'gremlins_num': args.gremlins_num,
         'observation_flatten': False,
-        'observe_vision': False,
+        'observe_vision': args.vision,
         'vision_size': (227, 227)
         #"sensors_hinge_joints": False,
         #"sensors_ball_joints": False,
@@ -162,25 +165,24 @@ def get_random_config1(args):
 
 
 def make_env(args, seed, idx, capture_video, run_name, gamma):
-    def thunk():
-        config = get_config(args)
-        print("Config: ", config)
-        env = Engine(config)
-        env = gym.wrappers.RecordEpisodeStatistics(env)
-        #if capture_video:
-        #    if idx == 0:
-        #        env = gym.wrappers.RecordVideo(env, f"videos/{run_name}")
-        env = gym.wrappers.ClipAction(env)
-        env = gym.wrappers.NormalizeObservation(env)
-        #env = gym.wrappers.TransformObservation(env, lambda obs: np.clip(obs, -10, 10))
-        env = gym.wrappers.NormalizeReward(env, gamma=gamma)
-        env = gym.wrappers.TransformReward(env, lambda reward: np.clip(reward, -10, 10))
-        env.seed(seed)
-        env.action_space.seed(seed)
-        env.observation_space.seed(seed)
-        return env
+    # def thunk():
+    config = get_config(args)
+    print("Config: ", config)
+    env = Engine(config)
+    env = gym.wrappers.RecordEpisodeStatistics(env)
+    #if capture_video:
+    #    if idx == 0:
+    #        env = gym.wrappers.RecordVideo(env, f"videos/{run_name}")
+    env = gym.wrappers.ClipAction(env)
+    # env = gym.wrappers.NormalizeObservation(env)    #env = gym.wrappers.TransformObservation(env, lambda obs: np.clip(obs, -10, 10))
+    env = gym.wrappers.NormalizeReward(env, gamma=gamma)
+    env = gym.wrappers.TransformReward(env, lambda reward: np.clip(reward, -10, 10))
+    env.seed(seed)
+    env.action_space.seed(seed)
+    env.observation_space.seed(seed)
+    return env
 
-    return thunk
+    # return thunk
 
 
 
@@ -216,7 +218,7 @@ class Agent(nn.Module):
         #self.state_encoder = StateEncoder()
         self.critic = nn.Sequential(
             #layer_init(nn.Linear(120, 64)),
-            layer_init(nn.Linear(54, 64)),
+            layer_init(nn.Linear(174, 64)),
             nn.Tanh(),
             layer_init(nn.Linear(64, 64)),
             nn.Tanh(),
@@ -224,13 +226,13 @@ class Agent(nn.Module):
         )
         self.actor_mean = nn.Sequential(
             #layer_init(nn.Linear(120, 64)),
-            layer_init(nn.Linear(54, 64)),
+            layer_init(nn.Linear(174, 64)),
             nn.Tanh(),
             layer_init(nn.Linear(64, 64)),
             nn.Tanh(),
-            layer_init(nn.Linear(64, np.prod(envs.single_action_space.shape)), std=0.01),
+            layer_init(nn.Linear(64, np.prod(envs.action_space.shape)), std=0.01),
         )
-        self.actor_logstd = nn.Parameter(torch.zeros(1, np.prod(envs.single_action_space.shape)))
+        self.actor_logstd = nn.Parameter(torch.zeros(1, np.prod(envs.action_space.shape)))
 
     def get_value(self, x):
         #x = torch.transpose(x, 1, 3)
@@ -242,7 +244,7 @@ class Agent(nn.Module):
         #x = self.state_encoder(x) 
         #print(x.size())
         action_mean = self.actor_mean(x)
-        action_logstd = self.actor_logstd.expand_as(action_mean)
+        action_logstd = self.actor_logstd#.expand_as(action_mean)
         action_std = torch.exp(action_logstd)
         probs = Normal(action_mean, action_std)
         if action is None:
@@ -252,9 +254,7 @@ class Agent(nn.Module):
 
 if __name__ == "__main__":
     args = parse_args()
-    #run_name = f"{args.env_id}__{args.exp_name}__{args.seed}__{int(time.time())}"
-    #run_name = f"Uniform_H{args.hazards_num}__G{args.gremlins_num}__V{args.vases_num}__P{args.pillars_num}"
-    storage_path = os.path.join(os.getcwd(), args.storage_dir)
+    storage_path =  args.storage_dir
     os.system("rm -rf %s"%(storage_path))
     os.makedirs(storage_path) 
     if args.track:
@@ -265,9 +265,6 @@ if __name__ == "__main__":
             entity=args.wandb_entity,
             sync_tensorboard=True,
             config=vars(args),
-     #       name=run_name,
-            #monitor_gym=True,
-            #save_code=True,
         )
     writer = SummaryWriter("runs/new_run")
     writer.add_text(
@@ -284,19 +281,15 @@ if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() and args.cuda else "cpu")
 
     # env setup
-    envs = gym.vector.SyncVectorEnv(
-        [make_env(args, args.seed + i, i, args.capture_video, "run_name", args.gamma) for i in range(args.num_envs)]
-    )
-    assert isinstance(envs.single_action_space, gym.spaces.Box), "only continuous action space is supported"
+    envs = make_env(args, args.seed, 0, args.capture_video, "run_name", args.gamma)
 
     agent = Agent(envs).to(device)
     optimizer = optim.Adam(agent.parameters(), lr=args.learning_rate, eps=1e-5)
     #print(envs.single_observation_space['vision'].shape)
     # ALGO Logic: Storage setup
-    obs = torch.zeros((args.num_steps, args.num_envs) + envs.single_observation_space.shape).to(device)
-
+    action_space_shape = envs.action_space.shape
     #obs = torch.zeros((args.num_steps, args.num_envs) + envs.single_observation_space['vision'].shape).to(device)
-    actions = torch.zeros((args.num_steps, args.num_envs) + envs.single_action_space.shape).to(device)
+    actions = torch.zeros((args.num_steps, args.num_envs) + envs.action_space.shape).to(device)
     logprobs = torch.zeros((args.num_steps, args.num_envs)).to(device)
     rewards = torch.zeros((args.num_steps, args.num_envs)).to(device)
     dones = torch.zeros((args.num_steps, args.num_envs)).to(device)
@@ -306,7 +299,13 @@ if __name__ == "__main__":
     # TRY NOT TO MODIFY: start the game
     global_step = 0
     start_time = time.time()
-    next_obs = torch.Tensor(envs.reset()[0]).to(device)
+    next_obs, _ = envs.reset()
+    del next_obs["vision"]
+    next_obs = np.array(np.hstack([k.ravel() for k in next_obs.values()]))
+    next_obs = torch.Tensor(next_obs).to(device)
+    obs_space_shape = next_obs.shape
+    obs = torch.zeros((args.num_steps, args.num_envs) + next_obs.shape).to(device)
+
     #next_obs = torch.Tensor(envs.reset()[0]['vision']).to(device)
     next_done = torch.zeros(args.num_envs).to(device)
     num_updates = args.total_timesteps // args.batch_size
@@ -315,7 +314,12 @@ if __name__ == "__main__":
     episode = 0 
     traj_obs, traj_rewards, traj_actions, traj_costs = None, None, None, None
     for update in range(1, num_updates + 1):
-        ep_storage_path = os.path.join(storage_path, "ep_%d"%episode)
+        traj_path = os.path.join(storage_path, "ep_%d"%episode)
+        os.makedirs(traj_path)
+        os.makedirs(os.path.join(traj_path, "info"))
+        os.makedirs(os.path.join(traj_path, "lidar"))
+        if args.vision:
+            os.makedirs(os.path.join(traj_path, "rgb"))
         # Annealing the rate if instructed to do so.
         if args.anneal_lr:
             frac = 1.0 - (update - 1.0) / num_updates
@@ -324,46 +328,54 @@ if __name__ == "__main__":
 
         for step in range(0, args.num_steps):
             global_step += 1 * args.num_envs
-            obs[step] = next_obs
-            dones[step] = next_done
-            costs[step] = cost
+            obs[step, 0] = next_obs
+            dones[step, 0] = next_done
+            costs[step, 0] = cost
 
             # ALGO LOGIC: action logic
             with torch.no_grad():
                 action, logprob, _, value = agent.get_action_and_value(next_obs)
                 values[step] = value.flatten()
-            actions[step] = action
-            logprobs[step] = logprob
+            actions[step, 0] = action
+            logprobs[step, 0] = logprob
 
             # TRY NOT TO MODIFY: execute the game and log data.
             next_obs, reward, done, dummy, info = envs.step(action.cpu().numpy())
+            cost = info["cost"]
+            # else:
+            #     print(info, done)
+            #     cost = info["final_info"][0]["cost"]
+            if args.vision:
+                im = Image.fromarray(np.array(next_obs['vision']*255).astype(np.uint8))
+                im.save(os.path.join(traj_path, "rgb", "%d.png"%step))
+                del next_obs['vision']
+            info_dict = {'reward': reward, 'done': done, 'cost': cost, 'prev_action': action} #, 'prev_obs_rgb': obs['vision']}
+            #info_dict.update(obs)
+            ## Saving the info for this step
+            f1 = open(os.path.join(traj_path, "info", "%d.pkl"%step), "wb")
+            pickle.dump(info_dict, f1, protocol=pickle.HIGHEST_PROTOCOL)
+            f1.close()
+
+            
+            ## Saving data from other sensors (particularly lidar)
+            f2 = open(os.path.join(traj_path, "lidar", "%d.pkl"%step), "wb")
+            pickle.dump(next_obs, f2, protocol=pickle.HIGHEST_PROTOCOL)
+            f2.close()
+            next_obs = np.array(np.hstack([k.ravel() for k in next_obs.values()]))
+            # print(next_obs.shape)
             #next_obs = next_obs['vision']
-            rewards[step] = torch.tensor(reward).to(device).view(-1)
-            next_obs, next_done = torch.Tensor(next_obs).to(device), torch.Tensor(done).to(device)
+            rewards[step, 0] = torch.tensor(reward).to(device).view(-1)
+            next_obs, next_done = torch.Tensor(next_obs).to(device), torch.Tensor([done]).to(device)
             return_ += args.gamma * reward 
-            if not done:
-                cost = torch.Tensor(info["cost"]).to(device).view(-1)
-                ep_cost += info["cost"]; cum_cost += info["cost"]
-            else:
-                cost = torch.Tensor(np.array([info["final_info"][0]["cost"]])).to(device).view(-1)
-                ep_cost += np.array([info["final_info"][0]["cost"]]); cum_cost += np.array([info["final_info"][0]["cost"]])
+            # if not done:
+            cost = torch.Tensor([info["cost"]]).to(device).view(-1)
+            ep_cost += info["cost"]; cum_cost += info["cost"]
             if done:
                 episode += 1 
-                wandb.log({"episodic_return": return_}, step=global_step)
-                wandb.log({"episodic_cost": ep_cost}, step=global_step)
-                wandb.log({"cummulative_cost": cum_cost}, step=global_step)
-                print(f"global_step={global_step}, episodic_return={return_}")
+                print(f"global_step={global_step}, episodic_return={return_}, episodic_cost={ep_cost}")
                 return_ = 0
                 ep_cost = np.array([0.])
-                #episode += 1
-                #traj_obs = obs if traj_obs == None else torch.concat([traj_obs, obs], axis=1)
-                #traj_rewards = rewards if traj_rewards == None else torch.concat([traj_rewards, rewards], axis=1)
-                #traj_actions = actions if traj_actions == None else torch.concat([traj_actions, actions], axis=1)
-                #traj_costs   = costs   if traj_costs   == None else torch.concat([traj_costs,   costs  ], axis=1)
-                torch.save(obs, os.path.join(storage_path, "obs_%d.pt"%episode))
-                torch.save(rewards, os.path.join(storage_path, "rewards_%d.pt"%episode))
-                torch.save(actions, os.path.join(storage_path, "actions_%d.pt"%episode))
-                torch.save(costs,   os.path.join(storage_path, "costs_%d.pt"%episode))
+                envs.reset()
                 break
 
         # bootstrap value if not done
@@ -383,10 +395,10 @@ if __name__ == "__main__":
             returns = advantages + values
 
         # flatten the batch
-        b_obs = obs.reshape((-1,) + envs.single_observation_space.shape)
+        b_obs = obs.reshape((-1,) + obs_space_shape)
         #b_obs = obs.reshape((-1,) + envs.single_observation_space['vision'].shape)
         b_logprobs = logprobs.reshape(-1)
-        b_actions = actions.reshape((-1,) + envs.single_action_space.shape)
+        b_actions = actions.reshape((-1,) + envs.action_space.shape)
         b_advantages = advantages.reshape(-1)
         b_returns = returns.reshape(-1)
         b_values = values.reshape(-1)
@@ -449,18 +461,6 @@ if __name__ == "__main__":
         y_pred, y_true = b_values.cpu().numpy(), b_returns.cpu().numpy()
         var_y = np.var(y_true)
         explained_var = np.nan if var_y == 0 else 1 - np.var(y_true - y_pred) / var_y
-
-        # TRY NOT TO MODIFY: record rewards for plotting purposes
-        writer.add_scalar("charts/learning_rate", optimizer.param_groups[0]["lr"], global_step)
-        writer.add_scalar("losses/value_loss", v_loss.item(), global_step)
-        writer.add_scalar("losses/policy_loss", pg_loss.item(), global_step)
-        writer.add_scalar("losses/entropy", entropy_loss.item(), global_step)
-        writer.add_scalar("losses/old_approx_kl", old_approx_kl.item(), global_step)
-        writer.add_scalar("losses/approx_kl", approx_kl.item(), global_step)
-        writer.add_scalar("losses/clipfrac", np.mean(clipfracs), global_step)
-        writer.add_scalar("losses/explained_variance", explained_var, global_step)
-        print("SPS:", int(global_step / (time.time() - start_time)))
-        writer.add_scalar("charts/SPS", int(global_step / (time.time() - start_time)), global_step)
 
     envs.close()
     writer.close()
