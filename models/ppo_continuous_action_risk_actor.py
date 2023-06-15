@@ -72,27 +72,6 @@ def parse_args():
     parser.add_argument("--use-risk-model", type=lambda x: bool(strtobool(x)), default=False, nargs="?", const=True,
         help="whether to use the risk model or not.")
 
-    ## Environment specifications  
-    parser.add_argument("--task", default="goal", type=str,
-                    help="Specifying the task in the environment")
-    parser.add_argument("--hazards_num", type=int, default=0,
-                        help="Number of hazardous regions in the environment")
-    parser.add_argument("--gremlins_num", type=int, default=0,
-                            help="Number of gremlins in the environment")
-    parser.add_argument("--buttons_num", type=int, default=0,
-                                help="Number of buttons in the environment")
-    parser.add_argument("--vases_num", type=int, default=0,
-                                    help="Number of vases in the environment")
-    parser.add_argument("--pillars_num", type=int, default=0,
-                                        help="Number of pillars in the environment")
-    #parser.add_argument("--use-reward-penalty", type=lambda x: bool(strtobool(x)), default=False, nargs="?", const=True,
-    #    help="Add reward penalty for unsafe states")
-    parser.add_argument("--reward-penalty", type=float, default=0,
-        help="coefficient of the value function")
-    parser.add_argument("--early_termination", type=lambda x: bool(strtobool(x)), default=False, nargs="?", const=True,
-                    help="whether to terminate an episode if the unsafe state is reached")
-
-
     args = parser.parse_args()
     args.batch_size = int(args.num_envs * args.num_steps)
     args.minibatch_size = int(args.batch_size // args.num_minibatches)
@@ -103,12 +82,11 @@ def parse_args():
 
 
 
-def get_config(args):
+def get_config():
     config = {
         'robot_base': 'xmls/car.xml',
-        'task': args.task,
+        'task': 'goal',
         'lidar_num_bins': 50,
-        'early_termination': args.early_termination,
         #'goal_size': 0.3,
         #'goal_keepout': 0.305,
         #'hazards_size': 0.2,
@@ -123,10 +101,10 @@ def get_config(args):
         'constrain_vases': True,
         'constrain_pillars': True,
         'constrain_buttons': True,
-        'hazards_num': args.hazards_num,
-        'vases_num': args.vases_num,
-        'pillars_num': args.pillars_num,
-        'gremlins_num': args.gremlins_num,
+        'hazards_num': 4, #args.hazards_num,
+        'vases_num': 0, #args.vases_num,
+        'pillars_num': 0, #args.pillars_num,
+        'gremlins_num': 0, #args.gremlins_num,
         'observation_flatten': True,
         #'placements_extents': [-1.5, -1.5, 1.5, 1.5],
         #'observe_vision': bool(args.vision),
@@ -145,7 +123,7 @@ def make_env(args, idx, capture_video, run_name, gamma):
         #    env = gym.make(env_id, render_mode="rgb_array")
         #else:
         #    env = gym.make(env_id)
-        config = get_config(args)
+        config = get_config()
         print("Config: ", config)
         env = Engine(config)
         env.seed(args.seed)
@@ -154,11 +132,11 @@ def make_env(args, idx, capture_video, run_name, gamma):
         if capture_video:
             if idx == 0:
                 env = gym.wrappers.RecordVideo(env, f"videos/{run_name}")
-        #env = gym.wrappers.ClipAction(env)
-        #env = gym.wrappers.NormalizeObservation(env)
-        #env = gym.wrappers.TransformObservation(env, lambda obs: np.clip(obs, -10, 10))
-        #env = gym.wrappers.NormalizeReward(env, gamma=gamma)
-        #env = gym.wrappers.TransformReward(env, lambda reward: np.clip(reward, -10, 10))
+        env = gym.wrappers.ClipAction(env)
+        env = gym.wrappers.NormalizeObservation(env)
+        env = gym.wrappers.TransformObservation(env, lambda obs: np.clip(obs, -10, 10))
+        env = gym.wrappers.NormalizeReward(env, gamma=gamma)
+        env = gym.wrappers.TransformReward(env, lambda reward: np.clip(reward, -10, 10))
         return env
 
     return thunk
@@ -202,29 +180,29 @@ class RiskEst(nn.Module):
 
 
 risk_est = RiskEst(obs_size=174) #np.array(envs.single_observation_space.shape).prod())
-risk_est.to("cuda")
+#risk_est.to("cuda")
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-risk_est.load_state_dict(torch.load("./pretrained/risk_model_Jun13.pt", map_location=device))
-
+risk_est.load_state_dict(torch.load("./models/risk_model.pt", map_location=device))
+risk_est.to(device)
 
 
 class Agent(nn.Module):
     def __init__(self, envs):
         super().__init__()
-        #self.critic = nn.Sequential(
-        #    layer_init(nn.Linear(np.array(envs.single_observation_space.shape).prod(), 64)),
-        #    nn.Tanh(),
-        #    layer_init(nn.Linear(64, 64)),
-        #    nn.Tanh(),
-        #    layer_init(nn.Linear(64, 1), std=1.0),
-        #)
+        self.critic = nn.Sequential(
+            layer_init(nn.Linear(np.array(envs.single_observation_space.shape).prod(), 64)),
+            nn.Tanh(),
+            layer_init(nn.Linear(64, 64)),
+            nn.Tanh(),
+            layer_init(nn.Linear(64, 1), std=1.0),
+        )
         #self.risk_est = RiskEst(obs_size=np.array(envs.single_observation_space.shape).prod())
-        self.risk_encoder_actor = nn.Sequential(
-            layer_init(nn.Linear(2, 12)),
-            nn.Tanh())
-        self.risk_encoder_critic = nn.Sequential(
-            layer_init(nn.Linear(2, 12)),
-            nn.Tanh())
+        #self.risk_encoder_actor = nn.Sequential(
+        #    layer_init(nn.Linear(2, 12)),
+        #    nn.Tanh())
+        #self.risk_encoder_critic = nn.Sequential(
+        #    layer_init(nn.Linear(2, 12)),
+        #    nn.Tanh())
         #self.actor_mean = nn.Sequential(
         #    layer_init(nn.Linear(np.array(envs.single_observation_space.shape).prod(), 64)),
         #    nn.Tanh(),
@@ -232,6 +210,10 @@ class Agent(nn.Module):
         #    nn.Tanh(),
         #    layer_init(nn.Linear(64, np.prod(envs.single_action_space.shape)), std=0.01),
         #)
+        self.risk_encoder = nn.Sequential(
+            layer_init(nn.Linear(2, 12)),
+            nn.Tanh())
+
         self.actor_fc1 = layer_init(nn.Linear(np.array(envs.single_observation_space.shape).prod(), 64))
         self.actor_fc2 = layer_init(nn.Linear(76, 76))
         self.actor_fc3 = layer_init(nn.Linear(76, np.prod(envs.single_action_space.shape)), std=0.01)
@@ -243,17 +225,17 @@ class Agent(nn.Module):
         self.tanh = nn.Tanh() 
         self.actor_logstd = nn.Parameter(torch.zeros(1, np.prod(envs.single_action_space.shape)))
 
-    def get_value(self, x, risk):
-        risk_enc = self.risk_encoder_critic(risk)
-        x1 = self.tanh(self.critic_fc1(x))
-        x2 = torch.cat([risk_enc, x1], axis=1)
-        x3 = self.tanh(self.critic_fc2(x2))
-        val = self.critic_fc3(x3)
+    def get_value(self, x):
+        #risk_enc = self.risk_encoder(risk)
+        #x1 = self.tanh(self.critic_fc1(x))
+        #x2 = torch.cat([risk_enc, x1], axis=1)
+        #x3 = self.tanh(self.critic_fc2(x2))
+        #val = self.critic_fc3(x3)
 
-        return val
+        return self.critic(x)
 
     def get_action_and_value(self, x, risk, action=None):
-        risk_enc = self.risk_encoder_actor(risk)
+        risk_enc = self.risk_encoder(risk)
         x1 = self.tanh(self.actor_fc1(x))
         x2 = torch.cat([risk_enc, x1], axis=1)
         x3 = self.tanh(self.actor_fc2(x2))
@@ -264,7 +246,7 @@ class Agent(nn.Module):
         probs = Normal(action_mean, action_std)
         if action is None:
             action = probs.sample()
-        return action, probs.log_prob(action).sum(1), probs.entropy().sum(1), self.get_value(x, risk)
+        return action, probs.log_prob(action).sum(1), probs.entropy().sum(1), self.get_value(x)
 
 
 if __name__ == "__main__":
@@ -351,20 +333,14 @@ if __name__ == "__main__":
             # TRY NOT TO MODIFY: execute the game and log data.
             next_obs, reward, terminated, truncated, infos = envs.step(action.cpu().numpy())
             done = np.logical_or(terminated, truncated)
+            rewards[step] = torch.tensor(reward).to(device).view(-1)
+            next_obs, next_done = torch.Tensor(next_obs).to(device), torch.Tensor(done).to(device)
             if not done:
                 cost = torch.Tensor(infos["cost"]).to(device).view(-1)
                 ep_cost += infos["cost"]; cum_cost += infos["cost"]
             else:
                 cost = torch.Tensor(np.array([infos["final_info"][0]["cost"]])).to(device).view(-1)
                 ep_cost += np.array([infos["final_info"][0]["cost"]]); cum_cost += np.array([infos["final_info"][0]["cost"]])
-
-            reward = torch.Tensor(reward).to(device).view(-1)
-            reward -= cost * args.reward_penalty
-
-            rewards[step] = reward
-            next_obs, next_done = torch.Tensor(next_obs).to(device), torch.Tensor(done).to(device)
-            if done:
-                print("Done")
 
             # Only print when at least 1 env is done
             if "final_info" not in infos:
@@ -374,7 +350,7 @@ if __name__ == "__main__":
                 # Skip the envs that are not done
                 if info is None:
                     continue
-                print(f"global_step={global_step}, episodic_return={info['episode']['r']}")
+                print(f"global_step={global_step}, episodic_return={info['episode']['r']}, episodic_cost={ep_cost}")
                 writer.add_scalar("charts/episodic_return", info["episode"]["r"], global_step)
                 writer.add_scalar("charts/episodic_length", info["episode"]["l"], global_step)
                 writer.add_scalar("charts/episodic_cost", ep_cost[0], global_step)
@@ -383,12 +359,12 @@ if __name__ == "__main__":
                  
         # bootstrap value if not done
         with torch.no_grad():
-            risk = torch.zeros(([1,2])).to(device)
-            if args.use_risk_model:
-                id_risk = torch.argmax(risk_est(next_obs), axis=1)
-                risk[:, id_risk] = 1
+            #risk = torch.zeros(([1,2])).to(device)
+            #if args.use_risk_model:
+            #    id_risk = torch.argmax(risk_est(next_obs), axis=1)
+            #    risk[:, id_risk] = 1
             #print(next_obs.size())
-            next_value = agent.get_value(next_obs, risk).reshape(1, -1)
+            next_value = agent.get_value(next_obs).reshape(1, -1)
             advantages = torch.zeros_like(rewards).to(device)
             lastgaelam = 0
             for t in reversed(range(args.num_steps)):
