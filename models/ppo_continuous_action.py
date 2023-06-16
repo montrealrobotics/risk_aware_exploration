@@ -85,6 +85,10 @@ def parse_args():
                                     help="Number of vases in the environment")
     parser.add_argument("--pillars_num", type=int, default=0,
                                         help="Number of pillars in the environment")
+    parser.add_argument("--use-risk-actor", type=lambda x: bool(strtobool(x)), default=True, nargs="?", const=True,
+        help="whether to use the risk model or not.")
+    parser.add_argument("--use-risk-critic", type=lambda x: bool(strtobool(x)), default=False, nargs="?", const=True,
+        help="whether to use the risk model or not.")
     #parser.add_argument("--use-reward-penalty", type=lambda x: bool(strtobool(x)), default=False, nargs="?", const=True,
     #    help="Add reward penalty for unsafe states")
     parser.add_argument("--reward-penalty", type=float, default=0,
@@ -237,25 +241,31 @@ class Agent(nn.Module):
         self.actor_fc3 = layer_init(nn.Linear(76, np.prod(envs.single_action_space.shape)), std=0.01)
         
         self.critic_fc1 = layer_init(nn.Linear(np.array(envs.single_observation_space.shape).prod(), 64))
-        self.critic_fc2 = layer_init(nn.Linear(76, 76))
+        self.critic_fc2 = layer_init(nn.Linear(64, 76))
         self.critic_fc3 = layer_init(nn.Linear(76, 1), std=0.01)
 
         self.tanh = nn.Tanh() 
         self.actor_logstd = nn.Parameter(torch.zeros(1, np.prod(envs.single_action_space.shape)))
 
     def get_value(self, x, risk):
-        risk_enc = self.risk_encoder_critic(risk)
         x1 = self.tanh(self.critic_fc1(x))
-        x2 = torch.cat([risk_enc, x1], axis=1)
+        if self.use_risk_critic:
+            risk_env = self.risk_encoder_critic(risk)
+            x2 = torch.cat([risk_enc, x1], axis=1)
+        else:
+            x2 = x1
         x3 = self.tanh(self.critic_fc2(x2))
         val = self.critic_fc3(x3)
 
         return val
 
     def get_action_and_value(self, x, risk, action=None):
-        risk_enc = self.risk_encoder_actor(risk)
         x1 = self.tanh(self.actor_fc1(x))
-        x2 = torch.cat([risk_enc, x1], axis=1)
+        if self.use_risk_actor:
+            risk_enc = self.risk_encoder_actor(risk)
+            x2 = torch.cat([risk_enc, x1], axis=1)
+        else:
+            x2 = x1 
         x3 = self.tanh(self.actor_fc2(x2))
         action_mean = self.actor_fc3(x3)
         #action_mean = self.actor_mean(x)
