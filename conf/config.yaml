@@ -32,4 +32,5 @@ ppo:
  
 
 seed: 12345
+original_work_dir: ${hydra:runtime.cwd}
  

@@ -1,6 +1,11 @@
 # docs and experiment results can be found at https://docs.cleanrl.dev/rl-algorithms/ppo/#ppo_continuous_actionpy
 import argparse
 import os
+os.system("sh new.sh")
+os.system("export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/.mujoco/mujoco200/bin")
+os.environ["LD_LIBRARY_PATH"] = os.environ["LD_LIBRARY_PATH"] + ":/home/.mujoco/mujoco200/bin"
+os.system("source /root/.bashrc")
+print(os.listdir("/"))
 import random
 import time
 from distutils.util import strtobool
@@ -16,8 +21,7 @@ from torch.utils.tensorboard import SummaryWriter
 from comet_ml import Experiment
 
 import hydra
-
-
+import os 
 
 
 def get_config():
@@ -118,9 +122,9 @@ class RiskEst(nn.Module):
 
 
 risk_est = RiskEst(obs_size=174) #np.array(envs.single_observation_space.shape).prod())
-risk_est.to("cuda")
+#risk_est.to("cuda")
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-risk_est.load_state_dict(torch.load("./models/risk_model.pt", map_location=device))
+#risk_est.load_state_dict(torch.load("./models/risk_model.pt", map_location=device))
 
 
 
@@ -391,6 +395,7 @@ def train(cfg):
         #             video_filenames.add(filename)
 
     envs.close()
+    return 1 
     # writer.close()
 
 
