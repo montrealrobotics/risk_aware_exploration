@@ -67,13 +67,18 @@ def parse_args():
             help="Entropy regularization coefficient.")
     parser.add_argument("--autotune", type=lambda x:bool(strtobool(x)), default=True, nargs="?", const=True,
         help="automatic tuning of the entropy coefficient")
+    parser.add_argument("--early_termination", type=lambda x: bool(strtobool(x)), default=False, nargs="?", const=True,
+                                help="whether to terminate an episode if the unsafe state is reached")
+
+
     args = parser.parse_args()
     # fmt: on
     return args
 
 
-def get_config():
+def get_config(args):
     config = {
+        'early_termination': args.early_termination,
         'robot_base': 'xmls/car.xml',
         'task': 'goal',
         'lidar_num_bins': 50,
@@ -109,7 +114,7 @@ from safety_gym.envs.engine import Engine
 
 def make_env(env_id, seed, idx, capture_video, run_name):
     def thunk():
-        config = get_config()
+        config = get_config(args)
         env = Engine(config)
         env = gym.wrappers.RecordEpisodeStatistics(env)
         if capture_video:
@@ -213,7 +218,7 @@ if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() and args.cuda else "cpu")
 
     # env setup
-    envs = gym.vector.SyncVectorEnv([make_env(args.env_id, args.seed, 0, args.capture_video, run_name)])
+    envs = gym.vector.SyncVectorEnv([make_env(args, args.seed, 0, args.capture_video, run_name)])
     assert isinstance(envs.single_action_space, gym.spaces.Box), "only continuous action space is supported"
 
     max_action = float(envs.single_action_space.high[0])
