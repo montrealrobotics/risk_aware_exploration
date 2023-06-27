@@ -246,6 +246,7 @@ if __name__ == "__main__":
         handle_timeout_termination=True,
     )
     start_time = time.time()
+    cum_cost, ep_cost = np.array([0.]), np.array([0.]) 
 
     # TRY NOT TO MODIFY: start the game
     obs, _ = envs.reset()
@@ -260,6 +261,12 @@ if __name__ == "__main__":
         # TRY NOT TO MODIFY: execute the game and log data.
         
         next_obs, rewards, dones, truncated, infos = envs.step(actions)
+        if not dones:
+            cost = torch.Tensor(infos["cost"]).to(device).view(-1)
+            ep_cost += infos["cost"]; cum_cost += infos["cost"]
+        else:
+            cost = torch.Tensor(np.array([infos["final_info"][0]["cost"]])).to(device).view(-1)
+            ep_cost += np.array([infos["final_info"][0]["cost"]]); cum_cost += np.array([infos["final_info"][0]["cost"]])
 
         if "final_info" not in infos:
             continue
@@ -269,6 +276,8 @@ if __name__ == "__main__":
                 print(f"global_step={global_step}, episodic_return={info['episode']['r']}")
                 writer.add_scalar("charts/episodic_return", info["episode"]["r"], global_step)
                 writer.add_scalar("charts/episodic_length", info["episode"]["l"], global_step)
+                writer.add_scalar("charts/episodic_cost", ep_cost[0], global_step)
+                writer.add_scalar("charts/cummulative_cost", cum_cost[0], global_step)
                 break
         # print(infos)
         # TRY NOT TO MODIFY: save data to reply buffer; handle `terminal_observation`
