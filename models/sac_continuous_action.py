@@ -4,10 +4,10 @@ import os
 import random
 import time
 from distutils.util import strtobool
-
+import json
 import safety_gym, gym
 import numpy as np
-#import pybullet_envs  # noqa
+# import pybullet_envs  # noqa
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -72,18 +72,49 @@ def parse_args():
     return args
 
 
+def get_config():
+    config = {
+        'robot_base': 'xmls/car.xml',
+        'task': 'goal',
+        'lidar_num_bins': 50,
+        #'goal_size': 0.3,
+        #'goal_keepout': 0.305,
+        #'hazards_size': 0.2,
+        #'hazards_keepout': 0.18,
+        #'lidar_max_dist': 3,
+        'observe_goal_lidar': True,
+        'observe_box_lidar': True,
+        'observe_hazards': True,
+        'observe_vases': True,
+        'constrain_hazards': True,
+        'constrain_gremlins': True,
+        'constrain_vases': True,
+        'constrain_pillars': True,
+        'constrain_buttons': True,
+        'hazards_num': 4, #args.hazards_num,
+        'vases_num': 0, #args.vases_num,
+        'pillars_num': 0, #args.pillars_num,
+        'gremlins_num': 0, #args.gremlins_num,
+        'observation_flatten': True,
+        #'placements_extents': [-1.5, -1.5, 1.5, 1.5],
+        #'observe_vision': bool(args.vision),
+        #'vision_size': (args.width, args.height)
+    }
+    return config
+
+
+
+from safety_gym.envs.engine import Engine
+
+
 def make_env(env_id, seed, idx, capture_video, run_name):
     def thunk():
-        env = gym.make(env_id)
+        config = get_config()
+        env = Engine(config)
         env = gym.wrappers.RecordEpisodeStatistics(env)
-        #if capture_video:
-        #    if idx == 0:
-        #        env = gym.wrappers.RecordVideo(env, f"videos/{run_name}")
-        env = gym.wrappers.ClipAction(env)
-        env = gym.wrappers.NormalizeObservation(env)
-        env = gym.wrappers.TransformObservation(env, lambda obs: np.clip(obs, -10, 10))
-        env = gym.wrappers.NormalizeReward(env, gamma=args.gamma)
-        env = gym.wrappers.TransformReward(env, lambda reward: np.clip(reward, -10, 10))
+        if capture_video:
+            if idx == 0:
+                env = gym.wrappers.RecordVideo(env, f"videos/{run_name}")
         env.seed(seed)
         env.action_space.seed(seed)
         env.observation_space.seed(seed)
@@ -217,8 +248,7 @@ if __name__ == "__main__":
     start_time = time.time()
 
     # TRY NOT TO MODIFY: start the game
-    obs = envs.reset()[0]
-    return_, cum_cost, ep_cost = np.array([0.0]), np.array([0.]), np.array([0.])
+    obs, _ = envs.reset()
     for global_step in range(args.total_timesteps):
         # ALGO LOGIC: put action logic here
         if global_step < args.learning_starts:
@@ -228,32 +258,24 @@ if __name__ == "__main__":
             actions = actions.detach().cpu().numpy()
 
         # TRY NOT TO MODIFY: execute the game and log data.
-        next_obs, rewards, dones, _, infos = envs.step(actions)
-        return_ += args.gamma * rewards
-        try:
-            ep_cost += info["cost"]; cum_cost += info["cost"]
-        except:
-            pass
-        if dones[0] or global_step == args.total_timesteps - 1:
-            #wandb.log({"episodic_return": return_}, step=global_step)
-            #wandb.log({"episodic_cost": ep_cost}, step=global_step)
-            #wandb.log({"cummulative_cost": cum_cost}, step=global_step)
-            print(f"global_step={global_step}, episodic_return={return_}")
-            return_ = 0
-            ep_cost = np.array([0.])
+        
+        next_obs, rewards, dones, truncated, infos = envs.step(actions)
 
+        if "final_info" not in infos:
+            continue
         # TRY NOT TO MODIFY: record rewards for plotting purposes
-        #for info in infos:
-        #    if "episode" in info.keys():
-        #        print(f"global_step={global_step}, episodic_return={info['episode']['r']}")
-        #        writer.add_scalar("charts/episodic_return", info["episode"]["r"], global_step)
-        #        writer.add_scalar("charts/episodic_length", info["episode"]["l"], global_step)
-        #        break
+        for info in infos["final_info"]:
+            if "episode" in info.keys():
+                print(f"global_step={global_step}, episodic_return={info['episode']['r']}")
+                writer.add_scalar("charts/episodic_return", info["episode"]["r"], global_step)
+                writer.add_scalar("charts/episodic_length", info["episode"]["l"], global_step)
+                break
+        # print(infos)
         # TRY NOT TO MODIFY: save data to reply buffer; handle `terminal_observation`
         real_next_obs = next_obs.copy()
-        #for idx, d in enumerate(dones):
-        #    if d:
-        #        real_next_obs[idx] = infos[idx]["terminal_observation"]
+        for idx, d in enumerate(dones):
+            if d:
+                real_next_obs[idx] = infos["final_observation"][idx]
         rb.add(obs, real_next_obs, actions, rewards, dones, infos)
 
         # TRY NOT TO MODIFY: CRUCIAL step easy to overlook
@@ -322,5 +344,6 @@ if __name__ == "__main__":
                 writer.add_scalar("charts/SPS", int(global_step / (time.time() - start_time)), global_step)
                 if args.autotune:
                     writer.add_scalar("losses/alpha_loss", alpha_loss.item(), global_step)
+
     envs.close()
     writer.close()
