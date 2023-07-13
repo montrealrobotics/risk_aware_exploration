@@ -1,3 +1,9 @@
 [submodule "cleanrl"]
 	path = cleanrl
 	url = git@github.com:montrealrobotics/cleanrl.git
+[submodule "panda-gym"]
+	path = panda-gym
+	url = https://github.com/montrealrobotics/panda-gym.git
+[submodule "stable-baselines3"]
+	path = stable-baselines3
+	url = https://github.com/montrealrobotics/stable-baselines3.git
