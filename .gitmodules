@@ -1,0 +1,9 @@
+[submodule "pkgs/stable-baselines3"]
+	path = pkgs/stable-baselines3
+	url = git@github.com:montrealrobotics/stable-baselines3.git
+[submodule "envs/panda-gym"]
+	path = envs/panda-gym
+	url = git@github.com:montrealrobotics/panda-gym.git
+[submodule "envs/safety-gym"]
+	path = envs/safety-gym
+	url = git@github.com:montrealrobotics/safety-gym.git
