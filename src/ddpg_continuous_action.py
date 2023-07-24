@@ -68,7 +68,7 @@ def parse_args():
         help="Use risk model in the actor or not ")
     parser.add_argument("--risk-critic", type=lambda x: bool(strtobool(x)), default=False, nargs="?", const=True,
         help="Use risk model in the critic or not ")
-    parser.add_argument("--risk-model-path", type=str, default="./pretrained/agent.pt",
+    parser.add_argument("--risk-model-path", type=str, default="./pretrained/no_termination/risk_ancient_sweep_4.pt",
         help="the id of the environment")
     parser.add_argument("--binary-risk", type=lambda x: bool(strtobool(x)), default=False, nargs="?", const=True,
         help="Use risk model in the critic or not ")  
@@ -96,17 +96,22 @@ def make_env(env_id, seed, idx, capture_video, run_name):
 
     return thunk
 
+def layer_init(layer, std=np.sqrt(2), bias_const=0.0):
+    torch.nn.init.orthogonal_(layer.weight, std)
+    torch.nn.init.constant_(layer.bias, bias_const)
+    return layer
+
 
 # ALGO LOGIC: initialize agent here:
 class QNetwork(nn.Module):
     def __init__(self, env, use_risk=False):
         super().__init__()
-        if self.use_risk = use_risk
+        self.use_risk = use_risk
         self.fc1 = nn.Linear(np.array(env.single_observation_space.shape).prod() + np.prod(env.single_action_space.shape), 256)
         if self.use_risk:
-            self.fc2 = nn.Linear(256, 256)
-        else:
             self.fc2 = nn.Linear(268, 256)
+        else:
+            self.fc2 = nn.Linear(256, 256)
         
         self.fc3 = nn.Linear(256, 1)
 
@@ -125,7 +130,8 @@ class QNetwork(nn.Module):
         if self.use_risk:
             x = F.relu(self.fc2(torch.cat([x, risk], axis=1)))
         else:
-            x = F.relu(self.fc2(x))        x = self.fc3(x)
+            x = F.relu(self.fc2(x))     
+        x = self.fc3(x)
         return x
 
 
@@ -135,9 +141,9 @@ class Actor(nn.Module):
         self.use_risk = use_risk
         self.fc1 = nn.Linear(np.array(env.single_observation_space.shape).prod(), 256)
         if self.use_risk:
-            self.fc2 = nn.Linear(256, 256)
-        else:
             self.fc2 = nn.Linear(268, 256)
+        else:
+            self.fc2 = nn.Linear(256, 256)
         
         self.fc_mu = nn.Linear(256, np.prod(env.single_action_space.shape))
         # action rescaling
@@ -273,8 +279,12 @@ poetry run pip install "stable_baselines3==2.0.0a1"
     envs = gym.vector.SyncVectorEnv([make_env(args.env_id, args.seed, 0, args.capture_video, run_name)])
     assert isinstance(envs.single_action_space, gym.spaces.Box), "only continuous action space is supported"
 
+    if args.model_type == "bayesian":
+        risk_model_class = BayesRiskEst 
+    else:
+        risk_model_class = RiskEst
 
-
+    print(envs.single_observation_space.shape)
     if args.use_risk:
         if os.path.exists(args.risk_model_path):
             risk_model = risk_model_class(obs_size=np.array(envs.single_observation_space.shape).prod())
@@ -286,7 +296,7 @@ poetry run pip install "stable_baselines3==2.0.0a1"
         
     
         
-    actor = Agent(envs=envs, use_risk=args.use_risk).to(device)    
+    actor = Actor(env=envs, use_risk=args.use_risk).to(device)    
     qf1 = QNetwork(envs, use_risk=args.use_risk).to(device)
     qf1_target = QNetwork(envs, use_risk=args.use_risk).to(device)
     target_actor = Actor(envs, use_risk=args.use_risk).to(device)
@@ -313,13 +323,17 @@ poetry run pip install "stable_baselines3==2.0.0a1"
     obs, _ = envs.reset()
     cost = 0 
     last_step = 0
+    risk = None
     for global_step in range(args.total_timesteps):
+        with torch.no_grad():
+            if args.use_risk:
+                risk = risk_model(torch.Tensor(obs).to(device))
         # ALGO LOGIC: put action logic here
         if global_step < args.learning_starts:
             actions = np.array([envs.single_action_space.sample() for _ in range(envs.num_envs)])
         else:
             with torch.no_grad():
-                actions = actor(torch.Tensor(obs).to(device))
+                actions = actor(torch.Tensor(obs).to(device), risk)
                 actions += torch.normal(0, actor.action_scale * args.exploration_noise)
                 actions = actions.cpu().numpy().clip(envs.single_action_space.low, envs.single_action_space.high)
 
@@ -334,6 +348,7 @@ poetry run pip install "stable_baselines3==2.0.0a1"
         else:
             cost = torch.Tensor(np.array([infos["final_info"][0]["cost"]])).to(device).view(-1)
 
+        infos["risk"] = risk
 
         # TRY NOT TO MODIFY: record rewards for plotting purposes
 
@@ -390,11 +405,20 @@ poetry run pip install "stable_baselines3==2.0.0a1"
         if global_step > args.learning_starts:
             data = rb.sample(args.batch_size)
             with torch.no_grad():
-                next_state_actions = target_actor(data.next_observations)
-                qf1_next_target = qf1_target(data.next_observations, next_state_actions)
+                if args.use_risk:
+                    next_risks = risk_model(data.next_observations)
+                else:
+                    next_risks = None
+                next_state_actions = target_actor(data.next_observations, next_risks)
+                qf1_next_target = qf1_target(data.next_observations, next_state_actions, next_risks)
                 next_q_value = data.rewards.flatten() + (1 - data.dones.flatten()) * args.gamma * (qf1_next_target).view(-1)
-
-            qf1_a_values = qf1(data.observations, data.actions).view(-1)
+           
+                if args.use_risk:
+                    risks = risk_model(data.observations)
+                else:
+                    risks = None
+            
+            qf1_a_values = qf1(data.observations, data.actions, risks).view(-1)
             qf1_loss = F.mse_loss(qf1_a_values, next_q_value)
 
             # optimize the model
@@ -403,7 +427,7 @@ poetry run pip install "stable_baselines3==2.0.0a1"
             q_optimizer.step()
 
             if global_step % args.policy_frequency == 0:
-                actor_loss = -qf1(data.observations, actor(data.observations)).mean()
+                actor_loss = -qf1(data.observations, actor(data.observations, risks), risks).mean()
                 actor_optimizer.zero_grad()
                 actor_loss.backward()
                 actor_optimizer.step()
