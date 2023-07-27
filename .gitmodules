@@ -4,3 +4,6 @@
 [submodule "pkgs/cleanrl"]
 	path = pkgs/cleanrl
 	url = git@github.com:montrealrobotics/cleanrl.git
+[submodule "envs/safety-gymnasium"]
+	path = envs/safety-gymnasium
+	url = git@github.com:montrealrobotics/safety-gymnasium.git
