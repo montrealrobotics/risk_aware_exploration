@@ -7,3 +7,9 @@
 [submodule "envs/safety-gym"]
 	path = envs/safety-gym
 	url = git@github.com:montrealrobotics/safety-gym.git
+[submodule "pkgs/--force"]
+	path = pkgs/--force
+	url = git@github.com:montrealrobotics/cleanrl.git
+[submodule "envs/--force"]
+	path = envs/--force
+	url = git@github.com:montrealrobotics/safety-gymnasium.git
