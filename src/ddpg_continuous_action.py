@@ -342,6 +342,8 @@ poetry run pip install "stable_baselines3==2.0.0a1"
         done = np.logical_or(terminateds, truncateds)
 
         all_costs[global_step] = cost
+        if risk is not None:
+            all_risks[global_step] = risk
 
         if not done:
             cost = torch.Tensor(infos["cost"]).to(device).view(-1)
