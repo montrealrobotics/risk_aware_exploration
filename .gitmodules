@@ -1,0 +1,6 @@
+[submodule "envs/panda-gym"]
+	path = envs/panda-gym
+	url = git@github.com:montrealrobotics/panda-gym.git
+[submodule "pkgs/cleanrl"]
+	path = pkgs/cleanrl
+	url = git@github.com:montrealrobotics/cleanrl.git
