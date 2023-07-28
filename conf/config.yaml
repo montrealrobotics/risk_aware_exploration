@@ -1,6 +1,6 @@
 defaults:
   - _self_
-  - launcher: local
+  - launcher: remote
   - hparams_search: optuna
 
 
