@@ -1,0 +1,38 @@
+defaults:
+  - _self_
+  - launcher: local
+  - hparams_search: optuna
+
+
+ppo:
+  exp_name: "Dummy"
+  seed: 1
+  torch_deterministic: True
+  cuda: True 
+  track: True
+  capture_video: False
+  env_id: None
+  total_timesteps: 100000
+  learning_rate: 3e-4 
+  num_envs: 1 
+  num_steps: 2048 
+  anneal_lr: True 
+  gamma: 0.99  
+  gae_lambda: 0.95 
+  num_minibatches: 32 
+  update_epochs: 10
+  norm_adv: True 
+  clip_coef: 0.2 
+  clip_vloss: True 
+  ent_coef: 0.0 
+  vf_coef: 0.5 
+  max_grad_norm: 0.5 
+  target_kl: None
+  use_risk_model: True 
+ 
+
+
+num_workers: 4
+env_id: SafetyPointGoal1Gymnasium-v0
+seed: 12345
+original_work_dir: ${hydra:runtime.cwd}
