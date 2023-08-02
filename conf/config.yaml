@@ -1,6 +1,6 @@
 defaults:
   - _self_
-  - launcher: remote
+  - launcher: narval
   - hparams_search: optuna
   - override hydra/hydra_logging: colorlog      # Pretty colors
   - override hydra/job_logging: colorlog
@@ -34,13 +34,18 @@ ppo:
  
 
 risk:
-  use_risk_model: False
-  risk_model_path: ??? 
+  use_risk: True
+  risk_model_path: ./data/pretrained/term_1/bayesian/noble-sweep-24.pt 
   binary_risk: False
   model_type: "mlp"
 
+
+env:
+  env_id: SafetyPointGoal1Gymnasium-v0
+  early_termination: True
+  term_cost: 1
+
 num_workers: 4
-env_id: SafetyPointGoal1Gymnasium-v0
 seed: 12345
 original_work_dir: ${hydra:runtime.cwd}
 tag: garbage 

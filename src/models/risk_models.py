@@ -14,7 +14,6 @@ class RiskEst(nn.Module):
         self.obs_size = obs_size
         self.batch_norm = batch_norm
 
-        self.acti
         self.fc1 = nn.Linear(obs_size, fc1_size)
         self.fc2 = nn.Linear(fc1_size, fc2_size)
         self.fc3 = nn.Linear(fc2_size, fc3_size)
