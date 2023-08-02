@@ -2,12 +2,15 @@ defaults:
   - _self_
   - launcher: narval
   - hparams_search: optuna
+  - sweep: ???
   - override hydra/hydra_logging: colorlog      # Pretty colors
   - override hydra/job_logging: colorlog
 
 
 ppo:
   exp_name: "Dummy"
+  collect_data: True
+  storage_path: data/ppo/term_1/
   seed: 1
   torch_deterministic: True
   cuda: True 
@@ -49,3 +52,4 @@ num_workers: 4
 seed: 12345
 original_work_dir: ${hydra:runtime.cwd}
 tag: garbage 
+

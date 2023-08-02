@@ -41,6 +41,6 @@ hydra:
         - module load httpproxy
         - CLUSTER_PATH=/lustre07/scratch/kauman9
         - export SINGULARITYENV_LD_LIBRARY_PATH=SINGULARITYENV_LD_LIBRARY_PATH:/root/.mujoco/mujoco210/bin
-        - export SINGULARITYENV_PYTHONPATH=SINGULARITYENV_PYTHONPATH:/safety-gymnasium
+        - export SINGULARITYENV_PYTHONPATH=SINGULARITYENV_PYTHONPATH:/risk_aware_exploration/safety-gymnasium
         - export SINGULARITYENV_PYTHONPATH=SINGULARITYENV_PYTHONPATH:/risk_aware_exploration
         #- cd /risk_aware_exploration

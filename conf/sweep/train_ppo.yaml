@@ -28,4 +28,6 @@ hydra:
       ppo.gamma: choice(0.99, 0.97)
       ppo.gae_lambda: choice(0.95, 0.99)
       ppo.ent_coef: choice(0, 0.1, 0.2)
-      ppo.use_risk_model: choice(True, False)
+      #ppo.use_risk_model: choice(True, False)
+      risk.use_risk: choice(True, False)
+
