@@ -33,8 +33,14 @@ ppo:
   use_risk_model: True 
  
 
+risk:
+  use_risk_model: False
+  risk_model_path: ??? 
+  binary_risk: False
+  model_type: "mlp"
 
 num_workers: 4
 env_id: SafetyPointGoal1Gymnasium-v0
 seed: 12345
 original_work_dir: ${hydra:runtime.cwd}
+tag: garbage 
