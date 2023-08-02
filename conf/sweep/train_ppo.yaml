@@ -1,0 +1,31 @@
+# @package _global_
+
+defaults:
+  - sweep_base
+  - override /launcher: remote
+  - override /hparams_search: optuna
+
+# name of the run determines folder name in logs
+name: "sweep_ppo"
+
+
+num_workers: 4
+env_id: SafetyPointGoal1Gymnasium-v0
+original_work_dir: ${hydra:runtime.cwd}
+
+
+
+# Sweeper tweaks
+hydra:
+  sweeper:
+    params:  # Parameters to sweep over
+      # Datamodule
+      ppo.seed: choice(0, 1, 2, 3, 4)
+      # Model learning rate
+      ppo.learning_rate: tag(log, interval(1e-4, 1e-3))
+      # Model params
+      ppo.num_steps: choice(64, 128, 256)
+      ppo.gamma: choice(0.99, 0.97)
+      ppo.gae_lambda: choice(0.95, 0.99)
+      ppo.ent_coef: choice(0, 0.1, 0.2)
+      ppo.use_risk_model: choice(True, False)

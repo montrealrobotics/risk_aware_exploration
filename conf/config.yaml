@@ -2,6 +2,8 @@ defaults:
   - _self_
   - launcher: remote
   - hparams_search: optuna
+  - override hydra/hydra_logging: colorlog      # Pretty colors
+  - override hydra/job_logging: colorlog
 
 
 ppo:
