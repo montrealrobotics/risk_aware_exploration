@@ -31,6 +31,8 @@ def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--data-path", type=str, default="./traj",
         help="the name of this experiment")
+    parser.add_argument("--env", type=str, default="SafetyCarButton1Gymnasium-v0",
+        help="the name of this experiment")
     parser.add_argument("--dataset_type", type=str, default="state_risk",
         help="what dataset to use state or state_action?")
     parser.add_argument("--seed", type=int, default=1,
@@ -53,6 +55,8 @@ def parse_args():
         help="validate every x SGD steps")
     parser.add_argument("--num_iterations", type=int, default=100, 
         help="number of times to go over the entire dataset during training")
+    parser.add_argument("--obs-size", type=int, default=72, 
+        help="size of the first layer of the mlp")
     parser.add_argument("--fc1_size", type=int, default=128, 
         help="size of the first layer of the mlp")
     parser.add_argument("--fc2_size", type=int, default=128,
@@ -79,11 +83,11 @@ def parse_args():
 
 ### Splitting episodes into train and test 
 def load_loaders(args):
-    dataset = torch.load(args.data_path, args.env, "all_%s.pt"%args.dataset_type)
+    dataset = torch.load(os.path.join(args.data_path, args.env, "all_%s.pt"%args.dataset_type))
     np.random.seed(args.seed)
-    dataset_size = data.size()[0]
+    dataset_size = dataset.size()[0]
 
-    idx = list(range(data.size()[0]))
+    idx = list(range(dataset.size()[0]))
     shuffle(idx)
 
     train_idx = idx[:int(0.8*dataset_size)]
@@ -116,17 +120,17 @@ class RiskTrainer():
         self.device = device
         if args.model_type == "mlp":
             if args.continuous_risk:
-                self.model = RiskEst(obs_size=72, fc1_size=args.fc1_size, fc2_size=args.fc2_size,\
+                self.model = RiskEst(obs_size=args.obs_size, fc1_size=args.fc1_size, fc2_size=args.fc2_size,\
                                 fc3_size=args.fc3_size, fc4_size=args.fc4_size, out_size=1, continuous_risk=True)
             else:
-                self.model = RiskEst(obs_size=72, fc1_size=args.fc1_size, fc2_size=args.fc2_size,\
+                self.model = RiskEst(obs_size=args.obs_size, fc1_size=args.fc1_size, fc2_size=args.fc2_size,\
                                 fc3_size=args.fc3_size, fc4_size=args.fc4_size, out_size=2, continuous_risk=False)
         elif args.model_type == "bayesian":
             if args.continuous_risk:
-                self.model = BayesRiskEst1(obs_size=72, fc1_size=args.fc1_size, fc2_size=args.fc2_size,\
+                self.model = BayesRiskEst1(obs_size=args.obs_size, fc1_size=args.fc1_size, fc2_size=args.fc2_size,\
                                 fc3_size=args.fc3_size, fc4_size=args.fc4_size, out_size=1)
             else:
-                self.model = BayesRiskEst(obs_size=72, fc1_size=args.fc1_size, fc2_size=args.fc2_size,\
+                self.model = BayesRiskEst(obs_size=args.obs_size, fc1_size=args.fc1_size, fc2_size=args.fc2_size,\
                                 fc3_size=args.fc3_size, fc4_size=args.fc4_size, out_size=2)
         if args.model_type == "bayesian":
             if args.continuous_risk:
@@ -198,9 +202,9 @@ class RiskTrainer():
         for batch_idx, (X, y) in enumerate(self.test_loader):
             with torch.no_grad():
                 if self.args.continuous_risk and self.args.model_type =="bayesian":
-                    pred_mu, pred_logvar = self.model(X.to(self.device).squeeze())
+                    pred_mu, pred_logvar = self.model(X.to(self.device))
                 else:
-                    pred_y = self.model(X.to(self.device).squeeze())
+                    pred_y = self.model(X.to(self.device))
 
                 if self.args.model_type == "bayesian":
                     if self.args.continuous_risk:
