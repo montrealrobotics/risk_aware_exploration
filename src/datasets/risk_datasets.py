@@ -150,3 +150,44 @@ class RiskDataset(nn.Module):
             return self.data[idx][:-(self.action_size+1)], self.data[idx][-(self.action_size+1):-1], y
         else:
             return self.data[idx][:-1], y
+
+
+
+class RiskyDataset(nn.Module):
+    def __init__(self, obs, actions, risks, action=False, continuous_risk=False, fear_clip=None, fear_radius=None, one_hot=True):
+        self.obs = obs
+        self.risks = risks
+        self.actions = actions
+        self.one_hot = one_hot
+        self.action = action
+        self.fear_clip = fear_clip 
+        self.fear_radius = fear_radius
+        self.continuous_risk = continuous_risk
+
+    def __len__(self):
+        return self.obs.size()[0]
+
+    def get_binary_risk(self, idx):
+        if self.one_hot:
+            y = torch.zeros(2)
+            y[int(self.risks[idx] <= self.fear_radius)] = 1.0
+        else:
+            y = int(self.risks[idx] <= self.fear_radius)
+    
+    def get_continuous_risk(self, idx):
+        if self.fear_clip is not None:
+            return 1. / torch.clip(self.risks[idx], 0, self.fear_clip)
+        else:
+            return 1. / self.risks[idx]
+
+    def __getitem__(self, idx):
+        if self.continuous_risk:
+            y = self.get_continuous_risk(idx)
+        else:
+            y = self.get_binary_risk(idx)
+
+        if self.action:
+            return self.obs[idx], self.actions[idx], y
+        else:
+            return self.obs[idx], y
+~

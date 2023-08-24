@@ -72,6 +72,7 @@ def parse_args():
     parser.add_argument("--model-type", type=str, default="mlp",
                     help="which network to use for the risk model")
     parser.add_argument("--fear_radius", type=int, default=5, help="radius around the dangerous objects to consider fearful. ")
+    parser.add_argument("--fear_clip", type=float, default=1000., help="radius around the dangerous objects to consider fearful. ")
     parser.add_argument("--continuous-risk", type=lambda x: bool(strtobool(x)), default=False, nargs="?", const=True,
         help="if toggled, this experiment will be tracked with Weights and Biases")
     
@@ -79,30 +80,49 @@ def parse_args():
 
 
 
-
+OBS_SIZE = 88 
 
 ### Splitting episodes into train and test 
 def load_loaders(args):
-    dataset = torch.load(os.path.join(args.data_path, args.env, "all_%s.pt"%args.dataset_type))
-    np.random.seed(args.seed)
-    dataset_size = dataset.size()[0]
+    obs = torch.load(os.path.join(args.data_path, args.env, "all_obs.pt"))
+    actions = torch.load(os.path.join(args.data_path, args.env, "all_actions.pt"))
+    costs = torch.load(os.path.join(args.data_path, args.env, "all_costs.pt"))
+    risks = torch.load(os.path.join(args.data_path, args.env, "all_risks.pt"))
 
-    idx = list(range(dataset.size()[0]))
+    if args.dataset_type == "state_risk":
+        obs = obs[1:]
+        risks = risks[:-1]
+        costs = costs[:-1]
+
+    np.random.seed(args.seed)
+    dataset_size = obs.size()[0]
+    
+    OBS_SIZE = obs.squeeze().size()[-1]
+
+    idx = list(range(dataset_size))
     shuffle(idx)
 
     train_idx = idx[:int(0.8*dataset_size)]
     test_idx = idx[int(0.8*dataset_size):]
 
-    train_dataset = dataset[train_idx,:]
-    test_dataset = dataset[test_idx, :]
+    train_obs = obs[train_idx,:]
+    test_obs = obs[test_idx, :]
+
+    train_actions = actions[train_idx,:]
+    test_actions = actions[test_idx, :]
+
+    train_risks = risks[train_idx,:]
+    test_risks = risks[test_idx, :]
+
+
 
     if args.dataset_type == "state_action_risk":
-        train_dataset = RiskDataset(train_dataset, action=True)
-        test_dataset = RiskDataset(test_dataset, action=True)
+        train_dataset = RiskyDataset(train_obs, train_actions, train_risks, action=True,  continuous_risk=args.continuous_risk, fear_clip=args.fear_clip, fear_radius=args.fear_radius, one_hot=True)
+        test_dataset = RiskyDataset(test_obs, test_actions, test_risks, action=True,  continuous_risk=args.continuous_risk, fear_clip=args.fear_clip, fear_radius=args.fear_radius, one_hot=True)
         
     else:
-        train_dataset = RiskDataset(train_dataset, action=False)
-        test_dataset = RiskDataset(test_dataset, action=False)
+        train_dataset = RiskyDataset(train_obs, train_actions, train_risks, action=False, continuous_risk=args.continuous_risk, fear_clip=args.fear_clip, fear_radius=args.fear_radius, one_hot=True)
+        test_dataset = RiskyDataset(test_obs, test_actions, test_risks,  action=False, continuous_risk=args.continuous_risk, fear_clip=args.fear_clip, fear_radius=args.fear_radius, one_hot=True)
 
     train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=10, generator=torch.Generator(device='cuda'))#, num_workers=10)
     test_loader = DataLoader(test_dataset, batch_size=1, shuffle=False, num_workers=10)
@@ -120,17 +140,17 @@ class RiskTrainer():
         self.device = device
         if args.model_type == "mlp":
             if args.continuous_risk:
-                self.model = RiskEst(obs_size=args.obs_size, fc1_size=args.fc1_size, fc2_size=args.fc2_size,\
+                self.model = RiskEst(obs_size=OBS_SIZE, fc1_size=args.fc1_size, fc2_size=args.fc2_size,\
                                 fc3_size=args.fc3_size, fc4_size=args.fc4_size, out_size=1, continuous_risk=True)
             else:
-                self.model = RiskEst(obs_size=args.obs_size, fc1_size=args.fc1_size, fc2_size=args.fc2_size,\
+                self.model = RiskEst(obs_size=OBS_SIZE, fc1_size=args.fc1_size, fc2_size=args.fc2_size,\
                                 fc3_size=args.fc3_size, fc4_size=args.fc4_size, out_size=2, continuous_risk=False)
         elif args.model_type == "bayesian":
             if args.continuous_risk:
-                self.model = BayesRiskEst1(obs_size=args.obs_size, fc1_size=args.fc1_size, fc2_size=args.fc2_size,\
+                self.model = BayesRiskEst1(obs_size=OBS_SIZE, fc1_size=args.fc1_size, fc2_size=args.fc2_size,\
                                 fc3_size=args.fc3_size, fc4_size=args.fc4_size, out_size=1)
             else:
-                self.model = BayesRiskEst(obs_size=args.obs_size, fc1_size=args.fc1_size, fc2_size=args.fc2_size,\
+                self.model = BayesRiskEst(obs_size=OBS_SIZE, fc1_size=args.fc1_size, fc2_size=args.fc2_size,\
                                 fc3_size=args.fc3_size, fc4_size=args.fc4_size, out_size=2)
         if args.model_type == "bayesian":
             if args.continuous_risk:
