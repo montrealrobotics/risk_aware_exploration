@@ -24,7 +24,7 @@ from src.utils import *
 from src.datasets.risk_datasets import *
 
 
-
+from distutils.util import strtobool
 
 def parse_args():
     # fmt: off
@@ -71,8 +71,8 @@ def parse_args():
         help="weight for the 1 class in BCE loss")
     parser.add_argument("--model-type", type=str, default="mlp",
                     help="which network to use for the risk model")
-    parser.add_argument("--fear_radius", type=int, default=5, help="radius around the dangerous objects to consider fearful. ")
-    parser.add_argument("--fear_clip", type=float, default=1000., help="radius around the dangerous objects to consider fearful. ")
+    parser.add_argument("--fear-radius", type=int, default=5, help="radius around the dangerous objects to consider fearful. ")
+    parser.add_argument("--fear-clip", type=float, default=1000., help="radius around the dangerous objects to consider fearful. ")
     parser.add_argument("--continuous-risk", type=lambda x: bool(strtobool(x)), default=False, nargs="?", const=True,
         help="if toggled, this experiment will be tracked with Weights and Biases")
     
@@ -80,7 +80,7 @@ def parse_args():
 
 
 
-OBS_SIZE = 88 
+args.obs_size = 88 
 
 ### Splitting episodes into train and test 
 def load_loaders(args):
@@ -88,7 +88,7 @@ def load_loaders(args):
     actions = torch.load(os.path.join(args.data_path, args.env, "all_actions.pt"))
     costs = torch.load(os.path.join(args.data_path, args.env, "all_costs.pt"))
     risks = torch.load(os.path.join(args.data_path, args.env, "all_risks.pt"))
-
+    print(obs.size(), actions.size(), costs.size(), risks.size())
     if args.dataset_type == "state_risk":
         obs = obs[1:]
         risks = risks[:-1]
@@ -97,7 +97,7 @@ def load_loaders(args):
     np.random.seed(args.seed)
     dataset_size = obs.size()[0]
     
-    OBS_SIZE = obs.squeeze().size()[-1]
+    args.obs_size = obs.squeeze().size()[-1]
 
     idx = list(range(dataset_size))
     shuffle(idx)
@@ -125,9 +125,9 @@ def load_loaders(args):
         test_dataset = RiskyDataset(test_obs, test_actions, test_risks,  action=False, continuous_risk=args.continuous_risk, fear_clip=args.fear_clip, fear_radius=args.fear_radius, one_hot=True)
 
     train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=10, generator=torch.Generator(device='cuda'))#, num_workers=10)
-    test_loader = DataLoader(test_dataset, batch_size=1, shuffle=False, num_workers=10)
+    test_loader = DataLoader(test_dataset, batch_size=args.batch_size, shuffle=False, num_workers=10)
 
-    return train_loader, test_loader 
+    return train_loader, test_loader, args 
 
 
 
@@ -140,17 +140,17 @@ class RiskTrainer():
         self.device = device
         if args.model_type == "mlp":
             if args.continuous_risk:
-                self.model = RiskEst(obs_size=OBS_SIZE, fc1_size=args.fc1_size, fc2_size=args.fc2_size,\
+                self.model = RiskEst(obs_size=args.obs_size, fc1_size=args.fc1_size, fc2_size=args.fc2_size,\
                                 fc3_size=args.fc3_size, fc4_size=args.fc4_size, out_size=1, continuous_risk=True)
             else:
-                self.model = RiskEst(obs_size=OBS_SIZE, fc1_size=args.fc1_size, fc2_size=args.fc2_size,\
+                self.model = RiskEst(obs_size=args.obs_size, fc1_size=args.fc1_size, fc2_size=args.fc2_size,\
                                 fc3_size=args.fc3_size, fc4_size=args.fc4_size, out_size=2, continuous_risk=False)
         elif args.model_type == "bayesian":
             if args.continuous_risk:
-                self.model = BayesRiskEst1(obs_size=OBS_SIZE, fc1_size=args.fc1_size, fc2_size=args.fc2_size,\
+                self.model = BayesRiskEst1(obs_size=args.obs_size, fc1_size=args.fc1_size, fc2_size=args.fc2_size,\
                                 fc3_size=args.fc3_size, fc4_size=args.fc4_size, out_size=1)
             else:
-                self.model = BayesRiskEst(obs_size=OBS_SIZE, fc1_size=args.fc1_size, fc2_size=args.fc2_size,\
+                self.model = BayesRiskEst(obs_size=args.obs_size, fc1_size=args.fc1_size, fc2_size=args.fc2_size,\
                                 fc3_size=args.fc3_size, fc4_size=args.fc4_size, out_size=2)
         if args.model_type == "bayesian":
             if args.continuous_risk:
@@ -162,7 +162,7 @@ class RiskTrainer():
                 self.criterion = nn.MSELoss()
             else:
                 self.criterion = nn.BCEWithLogitsLoss(pos_weight=torch.Tensor([1, args.weight]).to(device))
-        self.criterion = nn.BCEWithLogitsLoss(pos_weight=torch.Tensor([1, args.weight]).to(device))
+        #self.criterion = nn.BCEWithLogitsLoss(pos_weight=torch.Tensor([1, args.weight]).to(device))
         self.optim = optim.Adam(self.model.parameters(), args.learning_rate) 
         self.scheduler = optim.lr_scheduler.ExponentialLR(self.optim, gamma=args.lr_schedule)
         self.global_step = 0 
@@ -187,6 +187,11 @@ class RiskTrainer():
 
                 if self.args.model_type == "bayesian":
                     if self.args.continuous_risk:
+                        
+                        #y, mu, var = batch[1].squeeze().to(self.device), pred_mu, torch.exp(pred_logvar)
+                        #print(y, mu, var)
+                        #loss = torch.mean((y - mu)**2) #/ (2 * var)) # + (1/2) * torch.log(var))
+                        #print(torch.max(y), loss)
                         loss = self.criterion(pred_mu, batch[1].squeeze().to(self.device), torch.exp(pred_logvar))
                     else:
                         loss = self.criterion(pred_y, torch.argmax(batch[1].squeeze(), axis=1).to(self.device))
@@ -207,12 +212,16 @@ class RiskTrainer():
                 self.global_step += 1
                 ##---------------------------------------------------------------------------------------##
             pred, true = np.array(pred), np.array(true)
-            accuracy, precision, recall = accuracy_score(true, pred), precision_score(true, pred), recall_score(true, pred)
             print("-----------------------------Training Scores ----------------------------------------")
+            if not self.args.continuous_risk:
+                accuracy, precision, recall = accuracy_score(true, pred), precision_score(true, pred), recall_score(true, pred)
+                wandb.log({"train_precision": precision, "train_accuracy": accuracy, "train_recall": recall}, step=self.global_step)
+                print("Accuracy %.4f | Precision %.4f | Recall %.4f"%(accuracy, precision, recall))
+            #print("-----------------------------Training Scores ----------------------------------------")
             print("Episode %d ---- Loss: %.4f"%(ep, train_loss))
-            print("Accuracy %.4f | Precision %.4f | Recall %.4f"%(accuracy, precision, recall))
+            #print("Accuracy %.4f | Precision %.4f | Recall %.4f"%(accuracy, precision, recall))
             wandb.log({"train_loss": train_loss}, step=self.global_step)
-            wandb.log({"train_precision": precision, "train_accuracy": accuracy, "train_recall": recall}, step=self.global_step)
+            #wandb.log({"train_precision": precision, "train_accuracy": accuracy, "train_recall": recall}, step=self.global_step)
 
 
     def test(self):
@@ -220,6 +229,7 @@ class RiskTrainer():
         test_loss = 0
         pred, true = [], []
         for batch_idx, (X, y) in enumerate(self.test_loader):
+            #print(y.size())
             with torch.no_grad():
                 if self.args.continuous_risk and self.args.model_type =="bayesian":
                     pred_mu, pred_logvar = self.model(X.to(self.device))
@@ -228,6 +238,9 @@ class RiskTrainer():
 
                 if self.args.model_type == "bayesian":
                     if self.args.continuous_risk:
+                        #y = y.to(self.device)
+                        #mu, var = pred_mu, torch.exp(pred_logvar)
+                        #loss_att = torch.mean((y - mu)**2 / (2 * var) + (1/2) * torch.log(var))
                         test_loss += self.criterion(pred_mu, y.squeeze().to(self.device), torch.exp(pred_logvar))
                     else:
                         test_loss += self.criterion(pred_y, torch.argmax(y.squeeze(), axis=1).to(self.device))
@@ -238,22 +251,29 @@ class RiskTrainer():
                     y_pred, y_true = torch.argmax(pred_y, axis=1), torch.argmax(y.squeeze(), axis=1)
                     pred.extend(list(y_pred.detach().cpu().numpy()))
                     true.extend(list(y_true.detach().cpu().numpy()))
-        pred, true = np.array(pred), np.array(true)
-        f1 = f1_score(true, pred)
-        recall = recall_score(true, pred)
-        precision = precision_score(true, pred)
-        accuracy = accuracy_score(true, pred)
-        tn, fp, fn, tp = confusion_matrix(true, pred).ravel()
-        print("-------------------------------------------------------------------------------------------------")
+        if not self.args.continuous_risk:
+            pred, true = np.array(pred), np.array(true)
+            f1 = f1_score(true, pred)
+            recall = recall_score(true, pred)
+            precision = precision_score(true, pred)
+            accuracy = accuracy_score(true, pred)
+            tn, fp, fn, tp = confusion_matrix(true, pred).ravel()
+            print("-------------------------------------------------------------------------------------------------")
+            wandb.log({"accuracy": accuracy, "precision": precision, "recall": recall, "f1_score": f1}, step=self.global_step)
+            wandb.log({"tp": tp, "fp": fp, "tn": tn, "fn": fn}, step=self.global_step)
+            print("Accuracy %.4f   Precision: %.4f    Recall: %.4f     F1: %.4f"%(accuracy, precision, recall, f1))
+            print()
+            print("TP %.4f   FP: %.4f    FN: %.4f     TN: %.4f"%(tp, fp, fn, tn))
+            print("-------------------------------------------------------------------------------------------------")
         print("Test Loss: %.4f"%test_loss)
         print()
-        print("Accuracy %.4f   Precision: %.4f    Recall: %.4f     F1: %.4f"%(accuracy, precision, recall, f1))
-        print()
-        print("TP %.4f   FP: %.4f    FN: %.4f     TN: %.4f"%(tp, fp, fn, tn))
-        print("-------------------------------------------------------------------------------------------------")
+        #print("Accuracy %.4f   Precision: %.4f    Recall: %.4f     F1: %.4f"%(accuracy, precision, recall, f1))
+        #print()
+        #print("TP %.4f   FP: %.4f    FN: %.4f     TN: %.4f"%(tp, fp, fn, tn))
+        #print("-------------------------------------------------------------------------------------------------")
         wandb.log({"test_loss": test_loss}, step=self.global_step)
-        wandb.log({"accuracy": accuracy, "precision": precision, "recall": recall, "f1_score": f1}, step=self.global_step)
-        wandb.log({"tp": tp, "fp": fp, "tn": tn, "fn": fn}, step=self.global_step)
+        #wandb.log({"accuracy": accuracy, "precision": precision, "recall": recall, "f1_score": f1}, step=self.global_step)
+        #wandb.log({"tp": tp, "fp": fp, "tn": tn, "fn": fn}, step=self.global_step)
         return test_loss
 
 
@@ -268,6 +288,6 @@ if __name__ == "__main__":
             sync_tensorboard=True,
             config=vars(args),
     )
-    train_loader, test_loader = load_loaders(args)
+    train_loader, test_loader, args = load_loaders(args)
     risktrainer = RiskTrainer(args, train_loader, test_loader) 
     risktrainer.train()

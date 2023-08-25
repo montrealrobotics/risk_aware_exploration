@@ -173,10 +173,11 @@ class RiskyDataset(nn.Module):
             y[int(self.risks[idx] <= self.fear_radius)] = 1.0
         else:
             y = int(self.risks[idx] <= self.fear_radius)
+        return y
     
     def get_continuous_risk(self, idx):
         if self.fear_clip is not None:
-            return 1. / torch.clip(self.risks[idx], 0, self.fear_clip)
+            return 1. / torch.clip(self.risks[idx]+1.0, 1, self.fear_clip)
         else:
             return 1. / self.risks[idx]
 
@@ -190,4 +191,3 @@ class RiskyDataset(nn.Module):
             return self.obs[idx], self.actions[idx], y
         else:
             return self.obs[idx], y
-~

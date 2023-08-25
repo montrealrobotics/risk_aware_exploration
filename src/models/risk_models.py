@@ -113,8 +113,13 @@ class BayesRiskEst1(nn.Module):
         ## Batch Norm layers
         self.bnorm1 = nn.BatchNorm1d(fc1_size)
         self.bnorm2 = nn.BatchNorm1d(fc2_size)
-        self.bnorm3 = nn.BatchNorm1d(fc3_size)
-        self.bnorm4 = nn.BatchNorm1d(fc4_size)
+        self.mean_bnorm3 = nn.BatchNorm1d(fc3_size)
+        self.mean_bnorm4 = nn.BatchNorm1d(fc4_size)
+
+        #self.var_bnorm1 = nn.BatchNorm1d(fc1_size)
+        #self.var_bnorm2 = nn.BatchNorm1d(fc2_size)
+        self.var_bnorm3 = nn.BatchNorm1d(fc3_size)
+        self.var_bnorm4 = nn.BatchNorm1d(fc4_size)
 
         # Activation functions
         self.relu = nn.ReLU()
@@ -125,15 +130,15 @@ class BayesRiskEst1(nn.Module):
         self.logsoftmax = nn.LogSoftmax(dim=1)
 
     def forward(self, x):
-        x = self.relu(self.fc1(x))
-        x = self.relu(self.fc2(x))
+        x = self.bnorm1(self.relu(self.fc1(x)))
+        x = self.bnorm2(self.relu(self.fc2(x)))
 
-        mean  = self.relu(self.mean_fc3(x))
-        mean  = self.relu(self.mean_fc4(mean))
+        mean  = self.mean_bnorm3(self.relu(self.mean_fc3(x)))
+        mean  = self.mean_bnorm4(self.relu(self.mean_fc4(mean)))
         mean  = self.sigmoid(self.mean_out(mean))
 
-        logvar = self.relu(self.logvar_fc3(x))
-        logvar = self.relu(self.logvar_fc3(x))
+        logvar = self.var_bnorm3(self.relu(self.logvar_fc3(x)))
+        logvar = self.var_bnorm4(self.relu(self.logvar_fc4(x)))
         logvar = self.sigmoid(self.logvar_out(x))
 
         #x = self.bnorm3(self.relu(self.dropout(self.fc3(x))))
