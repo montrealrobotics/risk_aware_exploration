@@ -93,8 +93,8 @@ class BayesRiskEst(nn.Module):
         return out
 
 
-class BayesRiskEst1(nn.Module):
-    def __init__(self, obs_size=64, fc1_size=128, fc2_size=256, fc3_size=128, fc4_size=64, out_size=1):
+class BayesRiskEstCont(nn.Module):
+    def __init__(self, obs_size=64, fc1_size=128, fc2_size=128, fc3_size=128, fc4_size=128, out_size=1):
         super().__init__()
         self.obs_size = obs_size
         self.fc1 = nn.Linear(obs_size, fc1_size)
