@@ -73,14 +73,15 @@ def parse_args():
                     help="which network to use for the risk model")
     parser.add_argument("--fear-radius", type=int, default=5, help="radius around the dangerous objects to consider fearful. ")
     parser.add_argument("--fear-clip", type=float, default=1000., help="radius around the dangerous objects to consider fearful. ")
-    parser.add_argument("--continuous-risk", type=lambda x: bool(strtobool(x)), default=False, nargs="?", const=True,
-        help="if toggled, this experiment will be tracked with Weights and Biases")
-    
+    parser.add_argument("--risk-type", type=str, default="discrete",
+                    help="what kind of risk model to train")
+    parser.add_argument("--quantile-size", type=int, default=4, help="size of the risk quantile ")
+    parser.add_argument("--quantile-num", type=int, default=5, help="number of quantiles to make")
+
     return parser.parse_args()
 
 
 
-args.obs_size = 88 
 
 ### Splitting episodes into train and test 
 def load_loaders(args):
@@ -117,12 +118,12 @@ def load_loaders(args):
 
 
     if args.dataset_type == "state_action_risk":
-        train_dataset = RiskyDataset(train_obs, train_actions, train_risks, action=True,  continuous_risk=args.continuous_risk, fear_clip=args.fear_clip, fear_radius=args.fear_radius, one_hot=True)
-        test_dataset = RiskyDataset(test_obs, test_actions, test_risks, action=True,  continuous_risk=args.continuous_risk, fear_clip=args.fear_clip, fear_radius=args.fear_radius, one_hot=True)
+        train_dataset = RiskyDataset(train_obs, train_actions, train_risks, action=True,  risk_type=args.risk_type, fear_clip=args.fear_clip, fear_radius=args.fear_radius, one_hot=True, quantile_size=args.quantile_size, quantile_num=args.quantile_num)
+        test_dataset = RiskyDataset(test_obs, test_actions, test_risks, action=True,  risk_type=args.risk_type, fear_clip=args.fear_clip, fear_radius=args.fear_radius, one_hot=True, quantile_size=args.quantile_size, quantile_num=args.quantile_num)
         
     else:
-        train_dataset = RiskyDataset(train_obs, train_actions, train_risks, action=False, continuous_risk=args.continuous_risk, fear_clip=args.fear_clip, fear_radius=args.fear_radius, one_hot=True)
-        test_dataset = RiskyDataset(test_obs, test_actions, test_risks,  action=False, continuous_risk=args.continuous_risk, fear_clip=args.fear_clip, fear_radius=args.fear_radius, one_hot=True)
+        train_dataset = RiskyDataset(train_obs, train_actions, train_risks, action=False, risk_type=args.risk_type, fear_clip=args.fear_clip, fear_radius=args.fear_radius, one_hot=True, quantile_size=args.quantile_size, quantile_num=args.quantile_num)
+        test_dataset = RiskyDataset(test_obs, test_actions, test_risks,  action=False, risk_type=args.risk_type, fear_clip=args.fear_clip, fear_radius=args.fear_radius, one_hot=True, quantile_size=args.quantile_size, quantile_num=args.quantile_num)
 
     train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=10, generator=torch.Generator(device='cuda'))#, num_workers=10)
     test_loader = DataLoader(test_dataset, batch_size=args.batch_size, shuffle=False, num_workers=10)
@@ -139,26 +140,29 @@ class RiskTrainer():
         self.test_loader   = test_loader 
         self.device = device
         if args.model_type == "mlp":
-            if args.continuous_risk:
-                self.model = RiskEst(obs_size=args.obs_size, fc1_size=args.fc1_size, fc2_size=args.fc2_size,\
-                                fc3_size=args.fc3_size, fc4_size=args.fc4_size, out_size=1, continuous_risk=True)
-            else:
-                self.model = RiskEst(obs_size=args.obs_size, fc1_size=args.fc1_size, fc2_size=args.fc2_size,\
-                                fc3_size=args.fc3_size, fc4_size=args.fc4_size, out_size=2, continuous_risk=False)
+            self.model = RiskEst(obs_size=args.obs_size, fc1_size=args.fc1_size, fc2_size=args.fc2_size,\
+                            fc3_size=args.fc3_size, fc4_size=args.fc4_size, out_size=2, risk_type=args.risk_type)
         elif args.model_type == "bayesian":
-            if args.continuous_risk:
-                self.model = BayesRiskEst1(obs_size=args.obs_size, fc1_size=args.fc1_size, fc2_size=args.fc2_size,\
+            if args.risk_type == "continuous":
+                self.model = BayesRiskEstCont(obs_size=args.obs_size, fc1_size=args.fc1_size, fc2_size=args.fc2_size,\
                                 fc3_size=args.fc3_size, fc4_size=args.fc4_size, out_size=1)
-            else:
+            elif args.risk_type == "binary":
                 self.model = BayesRiskEst(obs_size=args.obs_size, fc1_size=args.fc1_size, fc2_size=args.fc2_size,\
                                 fc3_size=args.fc3_size, fc4_size=args.fc4_size, out_size=2)
+            elif args.risk_type == "quantile":
+                self.model = BayesRiskEst(obs_size=args.obs_size, fc1_size=args.fc1_size, fc2_size=args.fc2_size,\
+                                fc3_size=args.fc3_size, fc4_size=args.fc4_size, out_size=args.quantile_num)
         if args.model_type == "bayesian":
-            if args.continuous_risk:
+            if args.risk_type == "continuous":
                 self.criterion = nn.GaussianNLLLoss()
-            else:
+            elif args.risk_type == "binary":
                 self.criterion = nn.NLLLoss(weight=torch.Tensor([1, args.weight]).to(device))
+            else:
+                weight_tensor = torch.Tensor([1]*args.quantile_num).to(device)
+                weight_tensor[0] = args.weight
+                self.criterion = nn.NLLLoss(weight=weight_tensor).to(device)
         else:
-            if args.continuous_risk:
+            if args.risk_type == "continuous":
                 self.criterion = nn.MSELoss()
             else:
                 self.criterion = nn.BCEWithLogitsLoss(pos_weight=torch.Tensor([1, args.weight]).to(device))
@@ -176,22 +180,17 @@ class RiskTrainer():
             train_loss, best_val_loss = 0, 9999999
             pred, true = [], []
             for batch in tqdm.tqdm(self.train_loader):
-                if self.args.continuous_risk and self.args.model_type =="bayesian":
+                if self.args.risk_type == "continuous" and self.args.model_type =="bayesian":
                     pred_mu, pred_logvar = self.model(batch[0].to(self.device).squeeze())
                 else:
                     pred_y = self.model(batch[0].to(self.device).squeeze())
-                if not self.args.continuous_risk:
+                if not self.args.risk_type == "continuous":
                     y_pred, y_true = torch.argmax(pred_y, axis=1), torch.argmax(batch[1].squeeze(), axis=1)
                     pred.extend(list(y_pred.detach().cpu().numpy()))
                     true.extend(list(y_true.detach().cpu().numpy()))
 
                 if self.args.model_type == "bayesian":
-                    if self.args.continuous_risk:
-                        
-                        #y, mu, var = batch[1].squeeze().to(self.device), pred_mu, torch.exp(pred_logvar)
-                        #print(y, mu, var)
-                        #loss = torch.mean((y - mu)**2) #/ (2 * var)) # + (1/2) * torch.log(var))
-                        #print(torch.max(y), loss)
+                    if self.args.risk_type == "continuous":
                         loss = self.criterion(pred_mu, batch[1].squeeze().to(self.device), torch.exp(pred_logvar))
                     else:
                         loss = self.criterion(pred_y, torch.argmax(batch[1].squeeze(), axis=1).to(self.device))
@@ -213,7 +212,7 @@ class RiskTrainer():
                 ##---------------------------------------------------------------------------------------##
             pred, true = np.array(pred), np.array(true)
             print("-----------------------------Training Scores ----------------------------------------")
-            if not self.args.continuous_risk:
+            if not self.args.risk_type == "continuous":
                 accuracy, precision, recall = accuracy_score(true, pred), precision_score(true, pred), recall_score(true, pred)
                 wandb.log({"train_precision": precision, "train_accuracy": accuracy, "train_recall": recall}, step=self.global_step)
                 print("Accuracy %.4f | Precision %.4f | Recall %.4f"%(accuracy, precision, recall))
@@ -231,13 +230,13 @@ class RiskTrainer():
         for batch_idx, (X, y) in enumerate(self.test_loader):
             #print(y.size())
             with torch.no_grad():
-                if self.args.continuous_risk and self.args.model_type =="bayesian":
+                if self.args.risk_type == "continuous" and self.args.model_type =="bayesian":
                     pred_mu, pred_logvar = self.model(X.to(self.device))
                 else:
                     pred_y = self.model(X.to(self.device))
 
                 if self.args.model_type == "bayesian":
-                    if self.args.continuous_risk:
+                    if self.args.risk_type == "continuous":
                         #y = y.to(self.device)
                         #mu, var = pred_mu, torch.exp(pred_logvar)
                         #loss_att = torch.mean((y - mu)**2 / (2 * var) + (1/2) * torch.log(var))
@@ -247,11 +246,11 @@ class RiskTrainer():
                 else:
                     test_loss += self.criterion(pred_y.squeeze(), y.squeeze().to(self.device)).item()
 
-                if not self.args.continuous_risk:
+                if not self.args.risk_type == "continuous":
                     y_pred, y_true = torch.argmax(pred_y, axis=1), torch.argmax(y.squeeze(), axis=1)
                     pred.extend(list(y_pred.detach().cpu().numpy()))
                     true.extend(list(y_true.detach().cpu().numpy()))
-        if not self.args.continuous_risk:
+        if not self.args.risk_type == "continuous":
             pred, true = np.array(pred), np.array(true)
             f1 = f1_score(true, pred)
             recall = recall_score(true, pred)

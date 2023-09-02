@@ -7,3 +7,6 @@
 [submodule "envs/safety-gymnasium"]
 	path = envs/safety-gymnasium
 	url = git@github.com:montrealrobotics/safety-gymnasium.git
+[submodule "iv_rl"]
+	path = iv_rl
+	url = git@github.com:montrealrobotics/iv_rl.git
