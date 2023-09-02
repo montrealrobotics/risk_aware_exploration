@@ -219,7 +219,7 @@ class RiskTrainer():
             pred, true = np.array(pred), np.array(true)
             print("-----------------------------Training Scores ----------------------------------------")
             if not self.args.risk_type == "continuous":
-                accuracy, precision, recall = accuracy_score(true, pred), precision_score(true, pred), recall_score(true, pred)
+                accuracy, precision, recall = accuracy_score(true, pred), precision_score(true, pred, average='macro'), recall_score(true, pred, average='macro')
                 wandb.log({"train_precision": precision, "train_accuracy": accuracy, "train_recall": recall}, step=self.global_step)
                 print("Accuracy %.4f | Precision %.4f | Recall %.4f"%(accuracy, precision, recall))
             #print("-----------------------------Training Scores ----------------------------------------")
@@ -233,7 +233,7 @@ class RiskTrainer():
         self.model.eval()
         test_loss = 0
         pred, true = [], []
-        for batch in enumerate(self.test_loader):
+        for batch in self.test_loader:
             #print(y.size())
             with torch.no_grad():
                 if self.args.risk_type == "continuous" and self.args.model_type =="bayesian":
@@ -263,17 +263,17 @@ class RiskTrainer():
                     true.extend(list(y_true.detach().cpu().numpy()))
         if not self.args.risk_type == "continuous":
             pred, true = np.array(pred), np.array(true)
-            f1 = f1_score(true, pred)
-            recall = recall_score(true, pred)
-            precision = precision_score(true, pred)
+            f1 = f1_score(true, pred, average='macro')
+            recall = recall_score(true, pred, average='macro')
+            precision = precision_score(true, pred, average='macro')
             accuracy = accuracy_score(true, pred)
-            tn, fp, fn, tp = confusion_matrix(true, pred).ravel()
+            #tn, fp, fn, tp = confusion_matrix(true, pred).ravel()
             print("-------------------------------------------------------------------------------------------------")
             wandb.log({"accuracy": accuracy, "precision": precision, "recall": recall, "f1_score": f1}, step=self.global_step)
-            wandb.log({"tp": tp, "fp": fp, "tn": tn, "fn": fn}, step=self.global_step)
+            #wandb.log({"tp": tp, "fp": fp, "tn": tn, "fn": fn}, step=self.global_step)
             print("Accuracy %.4f   Precision: %.4f    Recall: %.4f     F1: %.4f"%(accuracy, precision, recall, f1))
             print()
-            print("TP %.4f   FP: %.4f    FN: %.4f     TN: %.4f"%(tp, fp, fn, tn))
+            #print("TP %.4f   FP: %.4f    FN: %.4f     TN: %.4f"%(tp, fp, fn, tn))
             print("-------------------------------------------------------------------------------------------------")
         print("Test Loss: %.4f"%test_loss)
         print()
