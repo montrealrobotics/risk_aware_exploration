@@ -145,13 +145,13 @@ class RiskTrainer():
         elif args.model_type == "bayesian":
             if args.risk_type == "continuous":
                 self.model = BayesRiskEstCont(obs_size=args.obs_size, fc1_size=args.fc1_size, fc2_size=args.fc2_size,\
-                                fc3_size=args.fc3_size, fc4_size=args.fc4_size, out_size=1)
+                                fc3_size=args.fc3_size, fc4_size=args.fc4_size, model_type=args.dataset_type, out_size=1)
             elif args.risk_type == "binary":
                 self.model = BayesRiskEst(obs_size=args.obs_size, fc1_size=args.fc1_size, fc2_size=args.fc2_size,\
-                                fc3_size=args.fc3_size, fc4_size=args.fc4_size, out_size=2)
+                                fc3_size=args.fc3_size, fc4_size=args.fc4_size, model_type=args.dataset_type, out_size=2)
             elif args.risk_type == "quantile":
                 self.model = BayesRiskEst(obs_size=args.obs_size, fc1_size=args.fc1_size, fc2_size=args.fc2_size,\
-                                fc3_size=args.fc3_size, fc4_size=args.fc4_size, out_size=args.quantile_num)
+                                fc3_size=args.fc3_size, fc4_size=args.fc4_size, model_type=args.dataset_type, out_size=args.quantile_num)
         if args.model_type == "bayesian":
             if args.risk_type == "continuous":
                 self.criterion = nn.GaussianNLLLoss()
@@ -181,9 +181,15 @@ class RiskTrainer():
             pred, true = [], []
             for batch in tqdm.tqdm(self.train_loader):
                 if self.args.risk_type == "continuous" and self.args.model_type =="bayesian":
-                    pred_mu, pred_logvar = self.model(batch[0].to(self.device).squeeze())
+                    if self.args.dataset_type == "state_risk":
+                        pred_mu, pred_logvar = self.model(batch[0].to(self.device).squeeze())
+                    else:
+                        pred_mu, pred_logvar = self.model(batch[0].to(self.device).squeeze(), batch[1].to(self.device).squeeze())
                 else:
-                    pred_y = self.model(batch[0].to(self.device).squeeze())
+                    if self.args.dataset_type == "state_risk":
+                        pred_y = self.model(batch[0].to(self.device).squeeze())
+                    else:
+                        pred_y = self.model(batch[0].to(self.device).squeeze(), batch[1].to(self.device).squeeze())
                 if not self.args.risk_type == "continuous":
                     y_pred, y_true = torch.argmax(pred_y, axis=1), torch.argmax(batch[1].squeeze(), axis=1)
                     pred.extend(list(y_pred.detach().cpu().numpy()))
@@ -227,27 +233,32 @@ class RiskTrainer():
         self.model.eval()
         test_loss = 0
         pred, true = [], []
-        for batch_idx, (X, y) in enumerate(self.test_loader):
+        for batch in enumerate(self.test_loader):
             #print(y.size())
             with torch.no_grad():
                 if self.args.risk_type == "continuous" and self.args.model_type =="bayesian":
-                    pred_mu, pred_logvar = self.model(X.to(self.device))
+                    if self.args.dataset_type == "state_risk":
+                        pred_mu, pred_logvar = self.model(batch[0].to(self.device))
+                    else:
+                        pred_mu, pred_logvar = self.model(batch[0].to(self.device), batch[1].to(self.device))
                 else:
-                    pred_y = self.model(X.to(self.device))
-
+                    if self.args.dataset_type == "state_risk":
+                        pred_y = self.model(batch[0].to(self.device).squeeze())
+                    else:
+                        pred_y = self.model(batch[0].to(self.device).squeeze(), batch[1].to(self.device).squeeze())
                 if self.args.model_type == "bayesian":
                     if self.args.risk_type == "continuous":
                         #y = y.to(self.device)
                         #mu, var = pred_mu, torch.exp(pred_logvar)
                         #loss_att = torch.mean((y - mu)**2 / (2 * var) + (1/2) * torch.log(var))
-                        test_loss += self.criterion(pred_mu, y.squeeze().to(self.device), torch.exp(pred_logvar))
+                        test_loss += self.criterion(pred_mu, batch[-1].squeeze().to(self.device), torch.exp(pred_logvar))
                     else:
-                        test_loss += self.criterion(pred_y, torch.argmax(y.squeeze(), axis=1).to(self.device))
+                        test_loss += self.criterion(pred_y, torch.argmax(batch[-1].squeeze(), axis=1).to(self.device))
                 else:
-                    test_loss += self.criterion(pred_y.squeeze(), y.squeeze().to(self.device)).item()
+                    test_loss += self.criterion(pred_y.squeeze(), batch[-1].squeeze().to(self.device)).item()
 
                 if not self.args.risk_type == "continuous":
-                    y_pred, y_true = torch.argmax(pred_y, axis=1), torch.argmax(y.squeeze(), axis=1)
+                    y_pred, y_true = torch.argmax(pred_y, axis=1), torch.argmax(batch[-1].squeeze(), axis=1)
                     pred.extend(list(y_pred.detach().cpu().numpy()))
                     true.extend(list(y_true.detach().cpu().numpy()))
         if not self.args.risk_type == "continuous":
