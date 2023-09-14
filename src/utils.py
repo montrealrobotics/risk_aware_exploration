@@ -92,7 +92,7 @@ def combine_data(data_path, type="state_risk"):
 
 
 
-class ReplayBuffer:
+class ReplayBufferOld:
         def __init__(self, buffer_size=100000):
                 self.obs = None 
                 self.next_obs = None

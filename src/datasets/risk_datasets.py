@@ -191,3 +191,66 @@ class RiskyDataset(nn.Module):
             return self.obs[idx], self.actions[idx], y
         else:
             return self.obs[idx], y
+
+
+
+class RiskyDataset(nn.Module):
+    def __init__(self, obs, actions, risks, action=False, risk_type="discrete", fear_clip=None, fear_radius=None, one_hot=True, quantile_size=4, quantile_num=5):
+        self.obs = obs
+        self.risks = risks
+        self.actions = actions
+        self.one_hot = one_hot
+        self.action = action
+        self.fear_clip = fear_clip 
+        self.fear_radius = fear_radius
+        self.risk_type = risk_type
+
+        self.quantile_size = quantile_size
+        self.quantile_num = quantile_num
+
+    def __len__(self):
+        return self.obs.size()[0]
+    
+    def get_quantile_risk(self, idx):
+        risk = self.risks[idx]
+        y = torch.zeros(self.quantile_num)
+        quant = self.quantile_size
+        label = None
+        for i in range(self.quantile_num-1):
+            if risk < quant:
+                label = i
+                break
+            else:
+                quant += self.quantile_size
+        if label is None:
+            label = self.quantile_num-1
+
+        y[label] = 1.0 
+        return y
+
+    def get_binary_risk(self, idx):
+        if self.one_hot:
+            y = torch.zeros(2)
+            y[int(self.risks[idx] <= self.fear_radius)] = 1.0
+        else:
+            y = int(self.risks[idx] <= self.fear_radius)
+        return y
+    
+    def get_continuous_risk(self, idx):
+        if self.fear_clip is not None:
+            return 1. / torch.clip(self.risks[idx]+1.0, 1, self.fear_clip)
+        else:
+            return 1. / self.risks[idx]
+
+    def __getitem__(self, idx):
+        if self.risk_type == "continuous":
+            y = self.get_continuous_risk(idx)
+        elif self.risk_type == "binary":
+            y = self.get_binary_risk(idx)
+        elif self.risk_type == "quantile":
+            y = self.get_quantile_risk(idx)
+
+        if self.action:
+            return self.obs[idx], self.actions[idx], y
+        else:
+            return self.obs[idx], y
