@@ -145,7 +145,7 @@ class ReplayBuffer:
                         "dist_to_fail": self.dist_to_fails[sample_idx]}
                   
 
-        def split_data(self, min_idx, max_idx):
+        def slice_data(self, min_idx, max_idx):
                 idx = range(min_idx, max_idx)
                 sample_idx = idx #np.random.choice(idx, sample_size)
                 return {"obs": self.obs[sample_idx],
