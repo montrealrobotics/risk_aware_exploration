@@ -144,7 +144,18 @@ class ReplayBuffer:
                         "costs": self.costs[sample_idx],
                         "dist_to_fail": self.dist_to_fails[sample_idx]}
                   
-        
+
+        def split_data(self, min_idx, max_idx):
+                idx = range(min_idx, max_idx)
+                sample_idx = idx #np.random.choice(idx, sample_size)
+                return {"obs": self.obs[sample_idx],
+                        "next_obs": self.next_obs[sample_idx],
+                        "actions": self.actions[sample_idx],
+                        "rewards": self.rewards[sample_idx],
+                        "dones": self.dones[sample_idx],
+                        "risks": self.risks[sample_idx], 
+                        "costs": self.costs[sample_idx],
+                        "dist_to_fail": self.dist_to_fails[sample_idx]}        
 
 class ReplayBufferBalanced:
         def __init__(self, buffer_size=100000):
