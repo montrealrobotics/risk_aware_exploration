@@ -54,7 +54,7 @@ class RiskEst(nn.Module):
 
 class BayesRiskEst(nn.Module):
     def __init__(self, obs_size=64, fc1_size=128, fc2_size=128,\
-                  fc3_size=128, fc4_size=128, out_size=2, batch_norm=False, activation='relu', model_type="state_risk", action_size=2):
+                  fc3_size=128, fc4_size=128, out_size=2, batch_norm=True, activation='relu', model_type="state_risk", action_size=2):
         super().__init__()
         self.obs_size = obs_size
         self.batch_norm = batch_norm

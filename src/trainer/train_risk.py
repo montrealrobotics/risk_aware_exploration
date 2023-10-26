@@ -87,13 +87,13 @@ def parse_args():
 def load_loaders(args):
     obs = torch.load(os.path.join(args.data_path, args.env, "all_obs.pt"))
     actions = torch.load(os.path.join(args.data_path, args.env, "all_actions.pt"))
-    costs = torch.load(os.path.join(args.data_path, args.env, "all_costs.pt"))
+    #costs = torch.load(os.path.join(args.data_path, args.env, "all_costs.pt"))
     risks = torch.load(os.path.join(args.data_path, args.env, "all_risks.pt"))
-    print(obs.size(), actions.size(), costs.size(), risks.size())
-    if args.dataset_type == "state_risk":
-        obs = obs[1:]
-        risks = risks[:-1]
-        costs = costs[:-1]
+    #print(obs.size(), actions.size(), costs.size(), risks.size())
+    #if args.dataset_type == "state_risk":
+    #    obs = obs[1:]
+    #    risks = risks[:-1]
+    #    costs = costs[:-1]
 
     np.random.seed(args.seed)
     dataset_size = obs.size()[0]
@@ -297,6 +297,7 @@ if __name__ == "__main__":
             entity=args.wandb_entity,
             sync_tensorboard=True,
             config=vars(args),
+            settings=wandb.Settings(_service_wait=300)
     )
     train_loader, test_loader, args = load_loaders(args)
     risktrainer = RiskTrainer(args, train_loader, test_loader) 
