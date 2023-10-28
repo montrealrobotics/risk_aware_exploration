@@ -36,13 +36,13 @@ class RiskEst(nn.Module):
     def forward(self, x):
         if self.batch_norm:
             x = self.bnorm1(self.activation(self.fc1(x)))
-            x = self.bnorm2(self.activation(self.fc2(x)))
-            x = self.bnorm3(self.activation(self.dropout(self.fc3(x))))
+            # x = self.bnorm2(self.activation(self.fc2(x)))
+            # x = self.bnorm3(self.activation(self.dropout(self.fc3(x))))
             x = self.bnorm4(self.activation(self.dropout(self.fc4(x))))
         else:
             x = self.activation(self.fc1(x))
-            x = self.activation(self.fc2(x))
-            x = self.activation(self.dropout(self.fc3(x)))
+            # x = self.activation(self.fc2(x))
+            # x = self.activation(self.dropout(self.fc3(x)))
             x = self.activation(self.dropout(self.fc4(x)))    
         
         if self.continuous_risk:
@@ -67,7 +67,7 @@ class BayesRiskEst(nn.Module):
             self.fc2 = nn.Linear(fc1_size + int(fc1_size/2), fc2_size)
             self.bnorm1_action = nn.BatchNorm1d(int(fc1_size/2))
 
-        #self.fc2 = nn.Linear(fc1_size, fc2_size)
+        self.fc2 = nn.Linear(fc1_size, fc2_size)
         self.fc3 = nn.Linear(fc2_size, fc3_size)
         self.fc4 = nn.Linear(fc3_size, fc4_size)
         self.out = nn.Linear(fc4_size, out_size)
@@ -90,8 +90,8 @@ class BayesRiskEst(nn.Module):
             if self.model_type == "state_action_risk":
                 x1 = self.bnorm1_action(self.activation(self.fc1_action(action)))
                 x = torch.cat([x, x1], axis=1)
-            x = self.bnorm2(self.activation(self.fc2(x)))
-            x = self.bnorm3(self.activation(self.dropout(self.fc3(x))))
+            # x = self.bnorm2(self.activation(self.fc2(x)))
+            # x = self.bnorm3(self.activation(self.dropout(self.fc3(x))))
             x = self.bnorm4(self.activation(self.dropout(self.fc4(x))))
         else:
             x = self.activation(self.fc1(x))
@@ -99,8 +99,8 @@ class BayesRiskEst(nn.Module):
                 x1 = self.activation(self.fc1_action(action))
                 x = torch.cat([x, x1], axis=1)
 
-            x = self.activation(self.fc2(x))
-            x = self.activation(self.dropout(self.fc3(x)))
+            # x = self.activation(self.fc2(x))
+            # x = self.activation(self.dropout(self.fc3(x)))
             x = self.activation(self.dropout(self.fc4(x)))
 
         out = self.logsoftmax(self.out(x))
