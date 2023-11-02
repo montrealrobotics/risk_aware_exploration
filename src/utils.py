@@ -140,9 +140,9 @@ class ReplayBuffer:
                 self.buffer_size = buffer_size 
 
         def add(self, obs, next_obs, action, reward, done, cost, risk, dist_to_fail):
-                #self.obs = obs if self.obs is None else torch.concat([self.obs, obs], axis=0)
+                self.obs = obs if self.obs is None else torch.concat([self.obs, obs], axis=0)
                 self.next_obs = next_obs if self.next_obs is None else torch.concat([self.next_obs, next_obs], axis=0)
-                #self.actions = action if self.actions is None else torch.concat([self.actions, action], axis=0)
+                self.actions = action if self.actions is None else torch.concat([self.actions, action], axis=0)
                 #self.rewards = reward if self.rewards is None else torch.concat([self.rewards, reward], axis=0)
                 #self.dones = done if self.dones is None else torch.concat([self.dones, done], axis=0)
                 self.risks = risk if self.risks is None else torch.concat([self.risks, risk], axis=0)
@@ -150,7 +150,10 @@ class ReplayBuffer:
                 self.dist_to_fails = dist_to_fail if self.dist_to_fails is None else torch.concat([self.dist_to_fails, dist_to_fail], axis=0)
 
         def __len__(self):
-                return self.next_obs.size()[0]
+                if self.next_obs is not None:
+                        return self.next_obs.size()[0]
+                else:
+                        return 0
         
         def sample(self, sample_size):
                 if self.next_obs.size()[0] > self.buffer_size:
@@ -159,9 +162,9 @@ class ReplayBuffer:
                     self.dist_to_fail = self.risks[-self.buffer_size:]
                 idx = range(self.next_obs.size()[0])
                 sample_idx = np.random.choice(idx, sample_size)
-                return {"obs": None, #self.obs[sample_idx],
+                return {"obs": self.obs[sample_idx],
                         "next_obs": self.next_obs[sample_idx],
-                        "actions": None, #self.actions[sample_idx],
+                        "actions": self.actions[sample_idx],
                         "rewards": None, #self.rewards[sample_idx],
                         "dones": None, #self.dones[sample_idx],
                         "risks": self.risks[sample_idx], 
