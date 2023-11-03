@@ -33,7 +33,7 @@ def parse_args():
         help="the name of this experiment")
     parser.add_argument("--env", type=str, default="SafetyCarButton1Gymnasium-v0",
         help="the name of this experiment")
-    parser.add_argument("--dataset_type", type=str, default="state_risk",
+    parser.add_argument("--dataset_type", type=str, default="state_action_risk",
         help="what dataset to use state or state_action?")
     parser.add_argument("--seed", type=int, default=1,
         help="seed of the experiment")
@@ -49,7 +49,7 @@ def parse_args():
         help="the entity (team) of wandb's project")
     parser.add_argument("--learning_rate", type=float, default=1e-4, 
         help="learning rate for the optimizer")
-    parser.add_argument("--batch_size", type=int, default=1000, 
+    parser.add_argument("--batch_size", type=int, default=100, 
         help="batch size for the stochastic gradient descent" ) 
     parser.add_argument("--validate-every", type=int, default=2000,
         help="validate every x SGD steps")
@@ -69,11 +69,11 @@ def parse_args():
         help="schedule for the learning rate decay " ) 
     parser.add_argument("--weight", type=float, default=1.0, 
         help="weight for the 1 class in BCE loss")
-    parser.add_argument("--model-type", type=str, default="mlp",
+    parser.add_argument("--model-type", type=str, default="bayesian",
                     help="which network to use for the risk model")
     parser.add_argument("--fear-radius", type=int, default=5, help="radius around the dangerous objects to consider fearful. ")
     parser.add_argument("--fear-clip", type=float, default=1000., help="radius around the dangerous objects to consider fearful. ")
-    parser.add_argument("--risk-type", type=str, default="discrete",
+    parser.add_argument("--risk-type", type=str, default="quantile",
                     help="what kind of risk model to train")
     parser.add_argument("--quantile-size", type=int, default=4, help="size of the risk quantile ")
     parser.add_argument("--quantile-num", type=int, default=5, help="number of quantiles to make")
@@ -85,20 +85,19 @@ def parse_args():
 
 ### Splitting episodes into train and test 
 def load_loaders(args):
-    obs = torch.load(os.path.join(args.data_path, args.env, "all_obs.pt"))
-    actions = torch.load(os.path.join(args.data_path, args.env, "all_actions.pt"))
+    obs = torch.load(os.path.join(args.data_path, "obs.pt"))
+    actions = torch.load(os.path.join(args.data_path, "actions.pt"))
     #costs = torch.load(os.path.join(args.data_path, args.env, "all_costs.pt"))
-    risks = torch.load(os.path.join(args.data_path, args.env, "all_risks.pt"))
-    #print(obs.size(), actions.size(), costs.size(), risks.size())
-    #if args.dataset_type == "state_risk":
-    #    obs = obs[1:]
-    #    risks = risks[:-1]
-    #    costs = costs[:-1]
-
+    risks = torch.load(os.path.join(args.data_path,"risks.pt")).repeat_interleave(2)
+    action_size, obs_size = actions.size()[1], obs.size()[0]
+    print(obs.size(), actions.size(), risks.size())
+ 
     np.random.seed(args.seed)
+    obs, actions, risks = obs[risks<50], actions[risks<50], risks[risks<50].unsqueeze(1)
     dataset_size = obs.size()[0]
     
     args.obs_size = obs.squeeze().size()[-1]
+    args.action_size  = actions.squeeze().size()[-1]
 
     idx = list(range(dataset_size))
     shuffle(idx)
@@ -118,15 +117,20 @@ def load_loaders(args):
 
 
     if args.dataset_type == "state_action_risk":
-        train_dataset = RiskyDataset(train_obs, train_actions, train_risks, action=True,  risk_type=args.risk_type, fear_clip=args.fear_clip, fear_radius=args.fear_radius, one_hot=True, quantile_size=args.quantile_size, quantile_num=args.quantile_num)
-        test_dataset = RiskyDataset(test_obs, test_actions, test_risks, action=True,  risk_type=args.risk_type, fear_clip=args.fear_clip, fear_radius=args.fear_radius, one_hot=True, quantile_size=args.quantile_size, quantile_num=args.quantile_num)
+        train_dataset = RiskyDataset(train_obs, train_actions, train_risks, action=True,  risk_type=args.risk_type,\
+                                     fear_clip=args.fear_clip, fear_radius=args.fear_radius, one_hot=True, quantile_size=args.quantile_size,\
+                                      quantile_num=args.quantile_num)
+        test_dataset = RiskyDataset(test_obs, test_actions, test_risks, action=True,  risk_type=args.risk_type, fear_clip=args.fear_clip,\
+                                     fear_radius=args.fear_radius, one_hot=True, quantile_size=args.quantile_size, quantile_num=args.quantile_num)
         
     else:
-        train_dataset = RiskyDataset(train_obs, train_actions, train_risks, action=False, risk_type=args.risk_type, fear_clip=args.fear_clip, fear_radius=args.fear_radius, one_hot=True, quantile_size=args.quantile_size, quantile_num=args.quantile_num)
-        test_dataset = RiskyDataset(test_obs, test_actions, test_risks,  action=False, risk_type=args.risk_type, fear_clip=args.fear_clip, fear_radius=args.fear_radius, one_hot=True, quantile_size=args.quantile_size, quantile_num=args.quantile_num)
+        train_dataset = RiskyDataset(train_obs, train_actions, train_risks, action=False, risk_type=args.risk_type, fear_clip=args.fear_clip,\
+                                     fear_radius=args.fear_radius, one_hot=True, quantile_size=args.quantile_size, quantile_num=args.quantile_num)
+        test_dataset = RiskyDataset(test_obs, test_actions, test_risks,  action=False, risk_type=args.risk_type, fear_clip=args.fear_clip,\
+                                     fear_radius=args.fear_radius, one_hot=True, quantile_size=args.quantile_size, quantile_num=args.quantile_num)
 
-    train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=10, generator=torch.Generator(device='cuda'))#, num_workers=10)
-    test_loader = DataLoader(test_dataset, batch_size=args.batch_size, shuffle=False, num_workers=10)
+    train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=3, generator=torch.Generator(device='cuda'))#, num_workers=10)
+    test_loader = DataLoader(test_dataset, batch_size=args.batch_size, shuffle=False, num_workers=3)
 
     return train_loader, test_loader, args 
 
@@ -150,7 +154,7 @@ class RiskTrainer():
                 self.model = BayesRiskEst(obs_size=args.obs_size, fc1_size=args.fc1_size, fc2_size=args.fc2_size,\
                                 fc3_size=args.fc3_size, fc4_size=args.fc4_size, model_type=args.dataset_type, out_size=2)
             elif args.risk_type == "quantile":
-                self.model = BayesRiskEst(obs_size=args.obs_size, fc1_size=args.fc1_size, fc2_size=args.fc2_size,\
+                self.model = BayesRiskEst(obs_size=args.obs_size, action_size=args.action_size, fc1_size=args.fc1_size, fc2_size=args.fc2_size,\
                                 fc3_size=args.fc3_size, fc4_size=args.fc4_size, model_type=args.dataset_type, out_size=args.quantile_num)
         if args.model_type == "bayesian":
             if args.risk_type == "continuous":
@@ -199,9 +203,15 @@ class RiskTrainer():
                     if self.args.risk_type == "continuous":
                         loss = self.criterion(pred_mu, batch[1].squeeze().to(self.device), torch.exp(pred_logvar))
                     else:
-                        loss = self.criterion(pred_y, torch.argmax(batch[1].squeeze(), axis=1).to(self.device))
+                        if self.args.dataset_type == "state_risk":
+                            loss = self.criterion(pred_y, torch.argmax(batch[1].squeeze(), axis=1).to(self.device))
+                        else:
+                            loss = self.criterion(pred_y, torch.argmax(batch[2].squeeze(), axis=1).to(self.device))
                 else:
-                    loss = self.criterion(pred_y, batch[1].squeeze().to(self.device))
+                    if self.args.dataset_type == "state_risk":
+                        loss = self.criterion(pred_y, batch[1].squeeze().to(self.device))
+                    else:
+                        loss = self.criterion(pred_y, batch[2].squeeze().to(self.device))
                 self.optim.zero_grad()
                 loss.backward()
                 self.optim.step()
