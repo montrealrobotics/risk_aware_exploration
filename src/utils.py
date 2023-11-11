@@ -7,6 +7,31 @@ from random import shuffle
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.utils.data import Dataset
+from torch.utils.data import DataLoader
+
+from src.models.risk_models import *
+from src.datasets.risk_datasets import *
+import tqdm
+
+def train_risk(model, dataloader, criterion, opt, num_epochs, device):
+    model.train()
+    net_loss = 0
+    for _ in tqdm.tqdm(range(num_epochs)):
+        for batch in dataloader:
+                pred = model(batch[0].to(device))
+                loss = criterion(pred, torch.argmax(batch[1].squeeze(), axis=1).to(device))
+                opt.zero_grad()
+                loss.backward()
+                opt.step()
+                net_loss += loss.item()
+#     torch.save(model.state_dict(), os.path.join(wandb.run.dir, "risk_model.pt"))
+#     wandb.save("risk_model.pt")
+    model.eval()
+    return net_loss
+
+
+
 
 
 def make_dirs(traj_path, episode):
@@ -17,7 +42,31 @@ def make_dirs(traj_path, episode):
         #except:
         #    pass
 
-        
+
+def compute_fear(costs, max_dist=1000):
+        fear_fwd, fear_bwd = torch.full(costs.size(), max_dist), torch.full(costs.size(), max_dist)
+        fwd_flag, bwd_flag = 0, 0
+        fwd_counter, bwd_counter = 0, 0
+        len_run = len(costs)
+        for i in range(len_run):
+                if costs[i] == 1:
+                        fear_fwd[i] = 0
+                        fwd_flag = 1
+                        fwd_counter = 0
+                elif fwd_flag:
+                       fwd_counter += 1
+                       fear_fwd[i] = fwd_counter
+
+                if costs[len_run-i-1] == 1:
+                        bwd_flag = 1
+                        fear_bwd[len_run-i-1] = 0
+                        bwd_counter = 0
+                elif bwd_flag:
+                       bwd_counter += 1
+                       fear_bwd[len_run-i-1] = bwd_counter
+        return torch.min(fear_fwd, fear_bwd)
+
+                     
 
 
 def store_data(next_obs, info_dict, traj_path, episode, step_log):
