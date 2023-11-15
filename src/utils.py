@@ -25,8 +25,8 @@ def train_risk(model, dataloader, criterion, opt, num_epochs, device):
                 loss.backward()
                 opt.step()
                 net_loss += loss.item()
-#     torch.save(model.state_dict(), os.path.join(wandb.run.dir, "risk_model.pt"))
-#     wandb.save("risk_model.pt")
+    torch.save(model.state_dict(), os.path.join(wandb.run.dir, "risk_model.pt"))
+    wandb.save("risk_model.pt")
     model.eval()
     return net_loss
 
