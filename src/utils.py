@@ -70,13 +70,11 @@ def compute_fear(costs, max_dist=1000):
 
 
 def store_data(next_obs, info_dict, traj_path, episode, step_log):
-        #, 'prev_obs_rgb': obs['vision']}
-        #info_dict.update(obs)
         ## Saving the info for this step
         f1 = open(os.path.join(traj_path, "traj_%d"%episode, "info", "%d.pkl"%step_log), "wb")
         pickle.dump(info_dict, f1, protocol=pickle.HIGHEST_PROTOCOL)
         f1.close()
-        # del obs['vision']
+
         ## Saving data from other sensors (particularly lidar)
         f2 = open(os.path.join(traj_path, "traj_%d"%episode, "lidar", "%d.pkl"%step_log), "wb")
         pickle.dump(next_obs, f2, protocol=pickle.HIGHEST_PROTOCOL)
@@ -205,14 +203,14 @@ class ReplayBuffer:
         def slice_data(self, min_idx, max_idx):
                 idx = range(min_idx, max_idx)
                 sample_idx = idx #np.random.choice(idx, sample_size)
-                return {"obs": self.obs[sample_idx],
+                return {"obs": None, #self.obs[sample_idx],
                         "next_obs": self.next_obs[sample_idx],
-                        "actions": self.actions[sample_idx],
-                        "rewards": self.rewards[sample_idx],
-                        "dones": self.dones[sample_idx],
+                        "actions": None, #self.actions[sample_idx],
+                        "rewards": None, #self.rewards[sample_idx],
+                        "dones": None, #self.dones[sample_idx],
                         "risks": self.risks[sample_idx], 
-                        "costs": self.costs[sample_idx],
-                        "dist_to_fail": self.dist_to_fails[sample_idx]}        
+                        "costs": None, #self.costs[sample_idx],
+                        "dist_to_fail": self.dist_to_fails[sample_idx]}     
 
         def save(self):
             torch.save(self.next_obs, os.path.join(self.data_path, "all_obs.pt"))
