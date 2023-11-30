@@ -81,18 +81,6 @@ def store_data(next_obs, info_dict, traj_path, episode, step_log):
         f2.close()
 
 
-def get_activation(name):
-    activation_dict = {
-        'relu': nn.ReLU(),
-        "sigmoid": nn.Sigmoid(),
-        "tanh": nn.Tanh(),
-        "softmax": nn.Softmax(dim=1),
-        "logsoftmax": nn.LogSoftmax(dim=1),
-    }
-
-    return activation_dict[name]
-
-
 
 def make_state_action_risk_data(data_path):
         obs = torch.load(os.path.join(data_path, "obs.pt"))

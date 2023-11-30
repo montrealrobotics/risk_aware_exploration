@@ -5,7 +5,17 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 
-from src.utils import get_activation
+def get_activation(name):
+    activation_dict = {
+        'relu': nn.ReLU(),
+        "sigmoid": nn.Sigmoid(),
+        "tanh": nn.Tanh(),
+        "softmax": nn.Softmax(dim=1),
+        "logsoftmax": nn.LogSoftmax(dim=1),
+    }
+
+    return activation_dict[name]
+
 
 class RiskEst(nn.Module):
     def __init__(self, obs_size=64, fc1_size=128, fc2_size=128,\
