@@ -69,6 +69,7 @@ class BayesRiskEst(nn.Module):
         self.obs_size = obs_size
         self.batch_norm = batch_norm
         self.model_type = model_type
+        self.action_size = action_size
         self.fc1 = nn.Linear(obs_size, fc1_size)
         if self.model_type == "state_risk":
             self.fc2 = nn.Linear(fc1_size, fc2_size)
@@ -95,6 +96,8 @@ class BayesRiskEst(nn.Module):
         self.dropout = nn.Dropout(0.2)
 
     def forward(self, x, action=None):
+        if action is None:
+            action = torch.zeros(x.size()[0], self.action_size)
         if self.batch_norm:
             x = self.bnorm1(self.activation(self.fc1(x)))
             if self.model_type == "state_action_risk":
