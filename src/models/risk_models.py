@@ -61,15 +61,15 @@ class RiskEst(nn.Module):
             out = self.softmax(self.out(x))
         return out
 
-
 class BayesRiskEst(nn.Module):
     def __init__(self, obs_size=64, fc1_size=128, fc2_size=128,\
-                  fc3_size=128, fc4_size=128, out_size=2, batch_norm=True, activation='relu', model_type="state_risk", action_size=2):
+                  fc3_size=128, fc4_size=128, out_size=2, batch_norm=True, activation='relu', model_type="state_risk", action_size=2, device=torch.device("cpu")):
         super().__init__()
         self.obs_size = obs_size
         self.batch_norm = batch_norm
         self.model_type = model_type
         self.action_size = action_size
+        self.device = device
         self.fc1 = nn.Linear(obs_size, fc1_size)
         if self.model_type == "state_risk":
             self.fc2 = nn.Linear(fc1_size, fc2_size)
@@ -97,7 +97,7 @@ class BayesRiskEst(nn.Module):
 
     def forward(self, x, action=None):
         if action is None:
-            action = torch.zeros(x.size()[0], self.action_size)
+            action = torch.zeros(x.size()[0], self.action_size).to(self.device)
         if self.batch_norm:
             x = self.bnorm1(self.activation(self.fc1(x)))
             if self.model_type == "state_action_risk":
@@ -118,6 +118,7 @@ class BayesRiskEst(nn.Module):
 
         out = self.logsoftmax(self.out(x))
         return out
+
 
 
 
