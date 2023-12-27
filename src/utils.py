@@ -31,6 +31,19 @@ def train_risk(model, dataloader, criterion, opt, num_epochs, device):
     return net_loss
 
 
+def risk_update_step(model, batch, criterion, opt, device, train_mode="state"):
+        model.train()
+        if train_mode == "state_action":
+                pred = model(batch["obs"].to(device), batch["actions"].to(device))
+        else:
+                pred = model(batch["next_obs"].to(device))
+        loss = criterion(pred, torch.argmax(batch["risks"].squeeze(), axis=1).to(device))
+        opt.zero_grad()
+        loss.backward()
+        opt.step()
+        model.eval()
+        return loss 
+
 
 
 
@@ -140,7 +153,7 @@ def combine_data(data_path, type="state_risk"):
 
 
 class ReplayBuffer:
-        def __init__(self, buffer_size=1000000, data_path="./data/"):
+        def __init__(self, buffer_size=1000000, data_path="./data/", fear_radius=20, device=torch.device("cpu")):
                 self.obs = None 
                 self.next_obs = None
                 self.actions = None 
@@ -151,16 +164,19 @@ class ReplayBuffer:
                 self.costs = None
                 self.data_path = data_path
                 self.buffer_size = buffer_size 
+                self.fear_radius = fear_radius
+                self.device = device
 
         def add(self, obs, next_obs, action, reward, done, cost, risk, dist_to_fail):
                 #self.obs = obs if self.obs is None else torch.concat([self.obs, obs], axis=0)
-                self.next_obs = next_obs if self.next_obs is None else torch.concat([self.next_obs, next_obs], axis=0)
+                idx = (dist_to_fail.squeeze() <= self.fear_radius).to(self.device)
+                self.next_obs = next_obs[idx, :] if self.next_obs is None else torch.concat([self.next_obs, next_obs[idx, :]], axis=0)
                 #self.actions = action if self.actions is None else torch.concat([self.actions, action], axis=0)
                 #self.rewards = reward if self.rewards is None else torch.concat([self.rewards, reward], axis=0)
                 #self.dones = done if self.dones is None else torch.concat([self.dones, done], axis=0)
-                self.risks = risk if self.risks is None else torch.concat([self.risks, risk], axis=0)
+                self.risks = risk[idx, :] if self.risks is None else torch.concat([self.risks, risk[idx, :]], axis=0)
                 #self.costs = cost if self.costs is None else torch.concat([self.costs, cost], axis=0)
-                self.dist_to_fails = dist_to_fail if self.dist_to_fails is None else torch.concat([self.dist_to_fails, dist_to_fail], axis=0)
+                self.dist_to_fails = dist_to_fail[idx, :] if self.dist_to_fails is None else torch.concat([self.dist_to_fails, dist_to_fail[idx, :]], axis=0)
 
         def __len__(self):
             if self.next_obs is not None:
