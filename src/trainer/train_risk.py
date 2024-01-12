@@ -85,11 +85,11 @@ def parse_args():
 
 ### Splitting episodes into train and test 
 def load_loaders(args):
-    obs = torch.load(os.path.join(args.data_path, args.env, "all_obs.pt"))
-    actions = torch.load(os.path.join(args.data_path, args.env, "all_actions.pt"))
+    obs = torch.load(os.path.join(args.data_path, args.env, "all_next_obs_40.pt"))
+    actions = torch.load(os.path.join(args.data_path, args.env, "all_actions_40.pt"))
     #costs = torch.load(os.path.join(args.data_path, args.env, "all_costs.pt"))
-    risks = torch.load(os.path.join(args.data_path, args.env, "all_risks.pt"))
-    #print(obs.size(), actions.size(), costs.size(), risks.size())
+    risks = torch.load(os.path.join(args.data_path, args.env, "all_risks_40.pt"))
+    print(obs.size(), actions.size(), risks.size())
     #if args.dataset_type == "state_risk":
     #    obs = obs[1:]
     #    risks = risks[:-1]
