@@ -57,23 +57,23 @@ def parse_args():
         help="number of times to go over the entire dataset during training")
     parser.add_argument("--obs-size", type=int, default=72, 
         help="size of the first layer of the mlp")
-    parser.add_argument("--fc1_size", type=int, default=128, 
+    parser.add_argument("--fc1_size", type=int, default=64, 
         help="size of the first layer of the mlp")
-    parser.add_argument("--fc2_size", type=int, default=128,
+    parser.add_argument("--fc2_size", type=int, default=64,
         help="size of the second layer of the mlp")
-    parser.add_argument("--fc3_size", type=int, default=128,
+    parser.add_argument("--fc3_size", type=int, default=64,
         help="size of the third layer of the mlp")
-    parser.add_argument("--fc4_size", type=int, default=128,
+    parser.add_argument("--fc4_size", type=int, default=64,
         help="size of the fourth layer of the mlp")
     parser.add_argument("--lr_schedule", type=float, default=0.99,
         help="schedule for the learning rate decay " ) 
     parser.add_argument("--weight", type=float, default=1.0, 
         help="weight for the 1 class in BCE loss")
-    parser.add_argument("--model-type", type=str, default="mlp",
+    parser.add_argument("--model-type", type=str, default="bayesian",
                     help="which network to use for the risk model")
-    parser.add_argument("--fear-radius", type=int, default=5, help="radius around the dangerous objects to consider fearful. ")
+    parser.add_argument("--fear-radius", type=int, default=40, help="radius around the dangerous objects to consider fearful. ")
     parser.add_argument("--fear-clip", type=float, default=1000., help="radius around the dangerous objects to consider fearful. ")
-    parser.add_argument("--risk-type", type=str, default="discrete",
+    parser.add_argument("--risk-type", type=str, default="quantile",
                     help="what kind of risk model to train")
     parser.add_argument("--quantile-size", type=int, default=4, help="size of the risk quantile ")
     parser.add_argument("--quantile-num", type=int, default=5, help="number of quantiles to make")
@@ -141,7 +141,7 @@ class RiskTrainer():
         self.device = device
         if args.model_type == "mlp":
             self.model = RiskEst(obs_size=args.obs_size, fc1_size=args.fc1_size, fc2_size=args.fc2_size,\
-                            fc3_size=args.fc3_size, fc4_size=args.fc4_size, out_size=2, risk_type=args.risk_type)
+                            fc3_size=args.fc3_size, fc4_size=args.fc4_size, out_size=2, model_type=args.risk_type)
         elif args.model_type == "bayesian":
             if args.risk_type == "continuous":
                 self.model = BayesRiskEstCont(obs_size=args.obs_size, fc1_size=args.fc1_size, fc2_size=args.fc2_size,\
@@ -210,11 +210,13 @@ class RiskTrainer():
                 ## Validation Phase 
                 if self.global_step % self.test_schedule == 0:
                     val_loss = self.test()
+                    wandb.log({"val_loss": val_loss}, step=self.global_step)
                     if val_loss < best_val_loss:
                         best_val_loss = val_loss
-                        torch.save(self.model.state_dict(), os.path.join(wandb.run.dir, "agent.pt"))
-                        wandb.save("agent.pt")
+                        torch.save(self.model.state_dict(), os.path.join(wandb.run.dir, "risk_model.pt"))
+                        wandb.save("risk_model.pt")
                 self.global_step += 1
+
                 ##---------------------------------------------------------------------------------------##
             pred, true = np.array(pred), np.array(true)
             print("-----------------------------Training Scores ----------------------------------------")
@@ -275,6 +277,7 @@ class RiskTrainer():
             print()
             #print("TP %.4f   FP: %.4f    FN: %.4f     TN: %.4f"%(tp, fp, fn, tn))
             print("-------------------------------------------------------------------------------------------------")
+        test_loss = test_loss / len(self.test_loader)
         print("Test Loss: %.4f"%test_loss)
         print()
         #print("Accuracy %.4f   Precision: %.4f    Recall: %.4f     F1: %.4f"%(accuracy, precision, recall, f1))
