@@ -125,7 +125,7 @@ def load_loaders(args):
         train_dataset = RiskyDataset(train_obs, train_actions, train_risks, action=False, risk_type=args.risk_type, fear_clip=args.fear_clip, fear_radius=args.fear_radius, one_hot=True, quantile_size=args.quantile_size, quantile_num=args.quantile_num)
         test_dataset = RiskyDataset(test_obs, test_actions, test_risks,  action=False, risk_type=args.risk_type, fear_clip=args.fear_clip, fear_radius=args.fear_radius, one_hot=True, quantile_size=args.quantile_size, quantile_num=args.quantile_num)
 
-    train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=10, generator=torch.Generator(device='cuda'))#, num_workers=10)
+    train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=10, generator=torch.Generator(device='cpu'))#, num_workers=10)
     test_loader = DataLoader(test_dataset, batch_size=args.batch_size, shuffle=False, num_workers=10)
 
     return train_loader, test_loader, args 
@@ -293,7 +293,7 @@ class RiskTrainer():
 
 if __name__ == "__main__":
     torch.multiprocessing.set_start_method('spawn')# good solution !!!!
-    torch.set_default_tensor_type('torch.cuda.FloatTensor')
+    #torch.set_default_tensor_type('torch.cuda.FloatTensor')
     args = parse_args()
     wandb.init(
             project=args.wandb_project_name,
@@ -303,5 +303,5 @@ if __name__ == "__main__":
             settings=wandb.Settings(_service_wait=300)
     )
     train_loader, test_loader, args = load_loaders(args)
-    risktrainer = RiskTrainer(args, train_loader, test_loader) 
+    risktrainer = RiskTrainer(args, train_loader, test_loader, device=torch.device("cpu")) 
     risktrainer.train()
