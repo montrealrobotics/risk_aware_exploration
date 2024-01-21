@@ -10,8 +10,6 @@ import torch.nn.functional as F
 from torch.utils.data import Dataset
 from torch.utils.data import DataLoader
 
-from src.models.risk_models import *
-from src.datasets.risk_datasets import *
 import tqdm
 
 def train_risk(model, dataloader, criterion, opt, num_epochs, device):
