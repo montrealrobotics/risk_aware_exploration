@@ -116,7 +116,7 @@ class ReplayBuffer:
                 #self.dist_to_fails = dist_to_fail if self.dist_to_fails is None else torch.concat([self.dist_to_fails, dist_to_fail], axis=0)
 
         def __len__(self):
-                return self.next_obs.size()[0]
+                return 0 if self.next_obs is None else self.next_obs.size()[0]
         
         def sample(self, sample_size):
                 if self.next_obs.size()[0] > self.buffer_size:
