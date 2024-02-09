@@ -68,7 +68,7 @@ def parse_args():
 
 args = parse_args()
 
-run = wandb.init(config=vars(args), entity="manila95",
+run = wandb.init(config=vars(args), entity="kaustubh_umontreal",
                 project="risk-aware-exploration",
                 monitor_gym=True,
                 sync_tensorboard=True, save_code=True)
