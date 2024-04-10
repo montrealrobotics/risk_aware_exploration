@@ -44,7 +44,7 @@ class AntEnv(mujoco_env.MujocoEnv, utils.EzPickle):
         done_cost = done*1.0
         cost = np.clip(obj_cost+done_cost, 0, 1)
         ob = self._get_obs()
-        return ob, reward, done, dict(
+        info = dict(
             reward_forward=forward_reward,
             reward_ctrl=-ctrl_cost,
             reward_contact=-contact_cost,
@@ -52,7 +52,12 @@ class AntEnv(mujoco_env.MujocoEnv, utils.EzPickle):
             cost_obj = obj_cost,
             cost_done = done_cost,
             cost = cost,
+            # final_observation=None
             )
+        if done:
+            info["final_observation"] = ob
+
+        return ob, reward, done, info
 
     def _get_obs(self):
         x = self.sim.data.qpos.flat[0]
