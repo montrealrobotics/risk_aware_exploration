@@ -183,11 +183,11 @@ class ReplayBuffer:
                 return 0
         
         def sample(self, sample_size):
-                if self.next_obs.size()[0] > self.buffer_size:
-                    self.next_obs = self.next_obs[-self.buffer_size:]
-                    self.risks = self.risks[-self.buffer_size:]
-                idx = range(self.next_obs.size()[0])
-                sample_idx = np.random.choice(idx, sample_size)
+                #if self.next_obs.size()[0] > self.buffer_size:
+                #    self.next_obs = self.next_obs[-self.buffer_size:]
+                #    self.risks = self.risks[-self.buffer_size:]
+                #idx = range(self.next_obs.size()[0])
+                sample_idx = np.random.randint(1, self.next_obs.size()[0], size=sample_size)        # np.random.choice(idx, sample_size)
                 return {"obs": None, #self.obs[sample_idx],
                         "next_obs": self.next_obs[sample_idx],
                         "actions": None, #self.actions[sample_idx],
