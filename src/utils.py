@@ -142,46 +142,49 @@ def combine_data(data_path, type="state_risk"):
 
 
 class ReplayBuffer:
-        def __init__(self, buffer_size=1000000, data_path="./data/"):
-                self.obs = None 
-                self.next_obs = None
-                self.actions = None 
-                self.rewards = None 
+        def __init__(self, buffer_size, obs_dim, risk_size, device):
+                self.obs = None
+                self.next_obs = torch.zeros(buffer_size, obs_dim).to(device)
+                self.actions = None
+                self.rewards = None
                 self.dones = None
-                self.risks = None 
-                self.dist_to_fails = None 
+                self.risks = torch.zeros(buffer_size, risk_size).to(device)
+                self.dist_to_fails = torch.zeros(buffer_size, 1).to(device)
                 self.costs = None
-                self.data_path = data_path
-                self.buffer_size = buffer_size 
+                #self.data_path = data_path
+                self.buffer_size = buffer_size
+                self.buff_fill = 0
 
         def add(self, obs, next_obs, action, reward, done, cost, risk, dist_to_fail):
+                data_size = next_obs.size()[0]
+                self.next_obs[self.buff_fill:self.buff_fill+data_size, :] = next_obs.squeeze()
+                self.risks[self.buff_fill:self.buff_fill+data_size, :] = risk.squeeze()
+                self.dist_to_fails[self.buff_fill:self.buff_fill+data_size, :] = dist_to_fail.reshape(-1, 1)
+                self.buff_fill += data_size
+
                 #self.obs = obs if self.obs is None else torch.concat([self.obs, obs], axis=0)
-                self.next_obs = next_obs if self.next_obs is None else torch.concat([self.next_obs, next_obs], axis=0)
+                #self.next_obs = next_obs if self.next_obs is None else torch.concat([self.next_obs, next_obs], axis=0)
                 #self.actions = action if self.actions is None else torch.concat([self.actions, action], axis=0)
                 #self.rewards = reward if self.rewards is None else torch.concat([self.rewards, reward], axis=0)
                 #self.dones = done if self.dones is None else torch.concat([self.dones, done], axis=0)
-                self.risks = risk if self.risks is None else torch.concat([self.risks, risk], axis=0)
+                #self.risks = risk if self.risks is None else torch.concat([self.risks, risk], axis=0)
                 #self.costs = cost if self.costs is None else torch.concat([self.costs, cost], axis=0)
-                self.dist_to_fails = dist_to_fail if self.dist_to_fails is None else torch.concat([self.dist_to_fails, dist_to_fail], axis=0)
+                #self.dist_to_fails = dist_to_fail if self.dist_to_fails is None else torch.concat([self.dist_to_fails, dist_to_fail], axis=0)
 
         def __len__(self):
-            if self.next_obs is not None:
-                return self.next_obs.size()[0]
-            else:
-                return 0
-        
+            return self.buff_fill
+
         def sample(self, sample_size):
-                if self.next_obs.size()[0] > self.buffer_size:
-                    self.next_obs = self.next_obs[-self.buffer_size:]
-                    self.risks = self.risks[-self.buffer_size:]
-                idx = range(self.next_obs.size()[0])
-                sample_idx = np.random.choice(idx, sample_size)
+                #if self.next_obs.size()[0] > self.buffer_size:
+                #    self.next_obs = self.next_obs[-self.buffer_size:]
+                #    self.risks = self.risks[-self.buffer_size:]
+                sample_idx = np.random.randint(1, self.buff_fill, size=sample_size)
                 return {"obs": None, #self.obs[sample_idx],
                         "next_obs": self.next_obs[sample_idx],
                         "actions": None, #self.actions[sample_idx],
                         "rewards": None, #self.rewards[sample_idx],
                         "dones": None, #self.dones[sample_idx],
-                        "risks": self.risks[sample_idx], 
+                        "risks": self.risks[sample_idx],
                         "costs": None, #self.costs[sample_idx],
                         "dist_to_fail": self.dist_to_fails[sample_idx]}
         
