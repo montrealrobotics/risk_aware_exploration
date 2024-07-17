@@ -166,15 +166,14 @@ class ReplayBuffer:
                 self.device = device
 
         def add(self, obs, next_obs, action, reward, done, cost, risk, dist_to_fail):
-                #self.obs = obs if self.obs is None else torch.concat([self.obs, obs], axis=0)
-                idx = (dist_to_fail.squeeze() <= self.fear_radius).to(self.device)
-                self.next_obs = next_obs[idx, :] if self.next_obs is None else torch.concat([self.next_obs, next_obs[idx, :]], axis=0)
+                self.obs = obs if self.obs is None else torch.concat([self.obs, obs], axis=0)
+                self.next_obs = next_obs if self.next_obs is None else torch.concat([self.next_obs, next_obs], axis=0)
                 #self.actions = action if self.actions is None else torch.concat([self.actions, action], axis=0)
                 #self.rewards = reward if self.rewards is None else torch.concat([self.rewards, reward], axis=0)
-                #self.dones = done if self.dones is None else torch.concat([self.dones, done], axis=0)
-                self.risks = risk[idx, :] if self.risks is None else torch.concat([self.risks, risk[idx, :]], axis=0)
-                #self.costs = cost if self.costs is None else torch.concat([self.costs, cost], axis=0)
-                self.dist_to_fails = dist_to_fail[idx, :] if self.dist_to_fails is None else torch.concat([self.dist_to_fails, dist_to_fail[idx, :]], axis=0)
+                self.dones = done if self.dones is None else torch.concat([self.dones, done], axis=0)
+                self.risks = risk if self.risks is None else torch.concat([self.risks, risk], axis=0)
+                self.costs = cost if self.costs is None else torch.concat([self.costs, cost], axis=0)
+                self.dist_to_fails = dist_to_fail if self.dist_to_fails is None else torch.concat([self.dist_to_fails, dist_to_fail], axis=0)
 
         def __len__(self):
             if self.next_obs is not None:
@@ -188,14 +187,14 @@ class ReplayBuffer:
                 #    self.risks = self.risks[-self.buffer_size:]
                 #idx = range(self.next_obs.size()[0])
                 sample_idx = np.random.randint(1, self.next_obs.size()[0], size=sample_size)        # np.random.choice(idx, sample_size)
-                return {"obs": None, #self.obs[sample_idx],
+                return {"obs": self.obs[sample_idx],
                         "next_obs": self.next_obs[sample_idx],
                         "actions": None, #self.actions[sample_idx],
                         "rewards": None, #self.rewards[sample_idx],
-                        "dones": None, #self.dones[sample_idx],
-                        "risks": self.risks[sample_idx], 
-                        "costs": None, #self.costs[sample_idx],
-                        "dist_to_fail": self.dist_to_fails[sample_idx]}
+                        "dones": None if self.dones is None else self.dones[sample_idx],
+                        "risks": None if self.risks is None else self.risks[sample_idx], 
+                        "costs": self.costs[sample_idx],
+                        "dist_to_fail": None if self.dist_to_fails is None else self.dist_to_fails[sample_idx]}
         
         def sample_balanced(self, sample_size):
                 idx = range(self.obs.size()[0])
