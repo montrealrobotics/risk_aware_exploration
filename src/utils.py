@@ -10,8 +10,6 @@ import torch.nn.functional as F
 from torch.utils.data import Dataset
 from torch.utils.data import DataLoader
 
-from src.models.risk_models import *
-from src.datasets.risk_datasets import *
 import tqdm
 
 def train_risk(model, dataloader, criterion, opt, num_epochs, device):
@@ -25,11 +23,24 @@ def train_risk(model, dataloader, criterion, opt, num_epochs, device):
                 loss.backward()
                 opt.step()
                 net_loss += loss.item()
-    torch.save(model.state_dict(), os.path.join(wandb.run.dir, "risk_model.pt"))
-    wandb.save("risk_model.pt")
+#     torch.save(model.state_dict(), os.path.join(wandb.run.dir, "risk_model.pt"))
+#     wandb.save("risk_model.pt")
     model.eval()
     return net_loss
 
+
+def risk_update_step(model, batch, criterion, opt, device, train_mode="state"):
+        model.train()
+        if train_mode == "state_action":
+                pred = model(batch["obs"].to(device), batch["actions"].to(device))
+        else:
+                pred = model(batch["next_obs"].to(device))
+        loss = criterion(pred, torch.argmax(batch["risks"].squeeze(), axis=1).to(device))
+        opt.zero_grad()
+        loss.backward()
+        opt.step()
+        model.eval()
+        return loss 
 
 
 
@@ -70,13 +81,11 @@ def compute_fear(costs, max_dist=1000):
 
 
 def store_data(next_obs, info_dict, traj_path, episode, step_log):
-        #, 'prev_obs_rgb': obs['vision']}
-        #info_dict.update(obs)
         ## Saving the info for this step
         f1 = open(os.path.join(traj_path, "traj_%d"%episode, "info", "%d.pkl"%step_log), "wb")
         pickle.dump(info_dict, f1, protocol=pickle.HIGHEST_PROTOCOL)
         f1.close()
-        # del obs['vision']
+
         ## Saving data from other sensors (particularly lidar)
         f2 = open(os.path.join(traj_path, "traj_%d"%episode, "lidar", "%d.pkl"%step_log), "wb")
         pickle.dump(next_obs, f2, protocol=pickle.HIGHEST_PROTOCOL)
@@ -142,51 +151,58 @@ def combine_data(data_path, type="state_risk"):
 
 
 class ReplayBuffer:
-        def __init__(self, buffer_size, obs_dim, risk_size, device):
-                self.obs = None
-                self.next_obs = torch.zeros(buffer_size, obs_dim).to(device)
-                self.actions = None
-                self.rewards = None
+        def __init__(self, buffer_size=1000000, data_path="./data/", fear_radius=20, device=torch.device("cpu")):
+                self.obs = None 
+                self.next_obs = None
+                self.actions = None 
+                self.rewards = None 
                 self.dones = None
-                self.risks = torch.zeros(buffer_size, risk_size).to(device)
-                self.dist_to_fails = torch.zeros(buffer_size, 1).to(device)
+                self.risks = None 
+                self.dist_to_fails = None 
                 self.costs = None
-                #self.data_path = data_path
-                self.buffer_size = buffer_size
-                self.buff_fill = 0
+                self.data_path = data_path
+                self.buffer_size = buffer_size 
+                self.fear_radius = fear_radius
+                self.device = device
 
-        def add(self, obs, next_obs, action, reward, done, cost, risk, dist_to_fail):
-                data_size = next_obs.size()[0]
-                self.next_obs[self.buff_fill:self.buff_fill+data_size, :] = next_obs.squeeze()
-                self.risks[self.buff_fill:self.buff_fill+data_size, :] = risk.squeeze()
-                self.dist_to_fails[self.buff_fill:self.buff_fill+data_size, :] = dist_to_fail.reshape(-1, 1)
-                self.buff_fill += data_size
+        def add(self, obs, next_obs, action, reward, done, cost, risks, dist_to_fail):
+                if self.next_obs is None or self.next_obs.size()[0] < self.buffer_size:
+                    self.next_obs = next_obs if self.next_obs is None else torch.concat([self.next_obs, next_obs], axis=0)
+                    self.risks = risks if self.risks is None else torch.concat([self.risks, risks], axis=0)
+                    self.dist_to_fails = dist_to_fail if self.dist_to_fails is None else torch.concat([self.dist_to_fails, dist_to_fail], axis=0)
 
+                #sample_size = next_obs.size()[0]
+                #sample_idx = np.random.randint(0, sample_size, size=int(0.1*sample_size))
                 #self.obs = obs if self.obs is None else torch.concat([self.obs, obs], axis=0)
-                #self.next_obs = next_obs if self.next_obs is None else torch.concat([self.next_obs, next_obs], axis=0)
+                #self.next_obs = next_obs[sample_idx] if self.next_obs is None else torch.concat([self.next_obs, next_obs[sample_idx]], axis=0)
                 #self.actions = action if self.actions is None else torch.concat([self.actions, action], axis=0)
                 #self.rewards = reward if self.rewards is None else torch.concat([self.rewards, reward], axis=0)
                 #self.dones = done if self.dones is None else torch.concat([self.dones, done], axis=0)
-                #self.risks = risk if self.risks is None else torch.concat([self.risks, risk], axis=0)
+                #self.risks = risk[sample_idx] if self.risks is None else torch.concat([self.risks, risk[sample_idx]], axis=0)
                 #self.costs = cost if self.costs is None else torch.concat([self.costs, cost], axis=0)
-                #self.dist_to_fails = dist_to_fail if self.dist_to_fails is None else torch.concat([self.dist_to_fails, dist_to_fail], axis=0)
+                #self.dist_to_fails = dist_to_fail[sample_idx] if self.dist_to_fails is None else torch.concat([self.dist_to_fails, dist_to_fail[sample_idx]], axis=0)
 
         def __len__(self):
-            return self.buff_fill
-
+            if self.next_obs is not None:
+                return self.next_obs.size()[0]
+            else:
+                return 0
+        
         def sample(self, sample_size):
-                #if self.next_obs.size()[0] > self.buffer_size:
-                #    self.next_obs = self.next_obs[-self.buffer_size:]
-                #    self.risks = self.risks[-self.buffer_size:]
-                sample_idx = np.random.randint(1, self.buff_fill, size=sample_size)
-                return {"obs": None, #self.obs[sample_idx],
-                        "next_obs": self.next_obs[sample_idx],
+                if self.next_obs.size()[0] > self.buffer_size:
+                    self.next_obs = self.next_obs[-self.buffer_size:]
+                    self.risks = self.risks[-self.buffer_size:]
+                    self.dist_to_fail = self.dist_to_fail[-self.buffer_size:]  
+                #idx = range(self.next_obs.size()[0])
+                sample_idx = np.random.randint(1, self.next_obs.size()[0], size=sample_size)        # np.random.choice(idx, sample_size)
+                return {"obs": None if self.obs is None else self.obs[sample_idx].float(),
+                        "next_obs": None if self.next_obs is None else self.next_obs[sample_idx].float(),
                         "actions": None, #self.actions[sample_idx],
                         "rewards": None, #self.rewards[sample_idx],
-                        "dones": None, #self.dones[sample_idx],
-                        "risks": self.risks[sample_idx],
-                        "costs": None, #self.costs[sample_idx],
-                        "dist_to_fail": self.dist_to_fails[sample_idx]}
+                        "dones": None if self.dones is None else self.dones[sample_idx],
+                        "risks": None if self.risks is None else self.risks[sample_idx], 
+                        "costs": None if self.costs is None else self.costs[sample_idx],
+                        "dist_to_fail": None if self.dist_to_fails is None else self.dist_to_fails[sample_idx]}
         
         def sample_balanced(self, sample_size):
                 idx = range(self.obs.size()[0])
@@ -208,14 +224,14 @@ class ReplayBuffer:
         def slice_data(self, min_idx, max_idx):
                 idx = range(min_idx, max_idx)
                 sample_idx = idx #np.random.choice(idx, sample_size)
-                return {"obs": self.obs[sample_idx],
+                return {"obs": None, #self.obs[sample_idx],
                         "next_obs": self.next_obs[sample_idx],
-                        "actions": self.actions[sample_idx],
-                        "rewards": self.rewards[sample_idx],
-                        "dones": self.dones[sample_idx],
+                        "actions": None, #self.actions[sample_idx],
+                        "rewards": None, #self.rewards[sample_idx],
+                        "dones": None, #self.dones[sample_idx],
                         "risks": self.risks[sample_idx], 
-                        "costs": self.costs[sample_idx],
-                        "dist_to_fail": self.dist_to_fails[sample_idx]}        
+                        "costs": None, #self.costs[sample_idx],
+                        "dist_to_fail": self.dist_to_fails[sample_idx]}     
 
         def save(self):
             torch.save(self.next_obs, os.path.join(self.data_path, "all_obs.pt"))

@@ -7,6 +7,30 @@ import torch.optim as optim
 
 from src.utils import get_activation
 
+
+
+
+class ImageEncoder(nn.Module):
+    def __init__(self, in_ch=3):
+        super().__init__()
+        self.conv1 = nn.Conv2d(in_ch, 32, 4, stride=2)
+        self.conv2 = nn.Conv2d(32, 64, 4)
+        self.conv3 = nn.Conv2d(64, 64, 4)
+
+        self.maxpool1 = nn.MaxPool2d(kernel_size=(2, 2), stride=(2, 2))
+        self.maxpool2 = nn.MaxPool2d(kernel_size=(2, 2), stride=(2, 2))
+        self.maxpool3 = nn.MaxPool2d(kernel_size=(2, 2), stride=(2, 2))
+        self.activation = nn.ReLU()
+
+    def forward(self, x):
+        x = self.maxpool1(self.activation(self.conv1(x)))
+        x = self.maxpool2(self.activation(self.conv2(x)))
+        x = self.activation(self.conv3(x))
+        return x.view(x.size()[0], -1)
+
+
+
+
 class RiskEst(nn.Module):
     def __init__(self, obs_size=64, fc1_size=128, fc2_size=128,\
                   fc3_size=128, fc4_size=128, out_size=2, batch_norm=False, activation='relu', continuous_risk=False):
@@ -57,6 +81,8 @@ class BayesRiskEst(nn.Module):
                   fc3_size=128, fc4_size=128, out_size=2, batch_norm=True, activation='relu', model_type="state_risk", action_size=2):
         super().__init__()
         self.obs_size = obs_size
+        self.img_enc = ImageEncoder()
+
         self.batch_norm = batch_norm
         self.model_type = model_type
         self.fc1 = nn.Linear(obs_size, fc1_size)
@@ -85,6 +111,10 @@ class BayesRiskEst(nn.Module):
         self.dropout = nn.Dropout(0.2)
 
     def forward(self, x, action=None):
+        #x = x[:, -96:]
+
+        x = self.img_enc(x)
+       
         if self.batch_norm:
             x = self.bnorm1(self.activation(self.fc1(x)))
             if self.model_type == "state_action_risk":
