@@ -152,23 +152,25 @@ def combine_data(data_path, type="state_risk"):
 
 class ReplayBuffer:
         def __init__(self, buffer_size=1000000, data_path="./data/", fear_radius=20, device=torch.device("cpu")):
-                self.obs = None 
-                self.next_obs = None
-                self.actions = None 
-                self.rewards = None 
-                self.dones = None
-                self.risks = None 
-                self.dist_to_fails = None 
-                self.costs = None
+                self.obs, self.next_obs, self.actions, self.rewards,\
+                          self.dones, self.risks, self.dist_to_fails, \
+                                self.costs = None, None, None, None, None, None, None, None
                 self.data_path = data_path
                 self.buffer_size = buffer_size 
                 self.fear_radius = fear_radius
                 self.device = device
 
+        def reset(self):
+               ## Reset buffer in case of storing only on-policy data 
+                self.obs, self.next_obs, self.actions, self.rewards,\
+                          self.dones, self.risks, self.dist_to_fails, \
+                                self.costs = None, None, None, None, None, None, None, None
+                
+                
         def add(self, obs, next_obs, action, reward, done, cost, risk, dist_to_fail):
                 self.obs = obs if self.obs is None else torch.concat([self.obs, obs], axis=0)
                 self.next_obs = next_obs if self.next_obs is None else torch.concat([self.next_obs, next_obs], axis=0)
-                #self.actions = action if self.actions is None else torch.concat([self.actions, action], axis=0)
+                self.actions = action if self.actions is None else torch.concat([self.actions, action], axis=0)
                 #self.rewards = reward if self.rewards is None else torch.concat([self.rewards, reward], axis=0)
                 self.dones = done if self.dones is None else torch.concat([self.dones, done], axis=0)
                 self.risks = risk if self.risks is None else torch.concat([self.risks, risk], axis=0)
@@ -187,13 +189,13 @@ class ReplayBuffer:
                 #    self.risks = self.risks[-self.buffer_size:]
                 #idx = range(self.next_obs.size()[0])
                 sample_idx = np.random.randint(1, self.next_obs.size()[0], size=sample_size)        # np.random.choice(idx, sample_size)
-                return {"obs": self.obs[sample_idx],
-                        "next_obs": self.next_obs[sample_idx],
-                        "actions": None, #self.actions[sample_idx],
+                return {"obs": self.obs[sample_idx] if self.obs is not None else None,
+                        "next_obs": self.next_obs[sample_idx] if self.next_obs is not None else None,
+                        "actions": self.actions[sample_idx] if self.actions is not None else None,
                         "rewards": None, #self.rewards[sample_idx],
                         "dones": None if self.dones is None else self.dones[sample_idx],
                         "risks": None if self.risks is None else self.risks[sample_idx], 
-                        "costs": self.costs[sample_idx],
+                        "costs": self.costs[sample_idx] if self.costs is not None else None,
                         "dist_to_fail": None if self.dist_to_fails is None else self.dist_to_fails[sample_idx]}
         
         def sample_balanced(self, sample_size):

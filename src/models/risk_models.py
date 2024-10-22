@@ -85,6 +85,8 @@ class BayesRiskEst(nn.Module):
         self.dropout = nn.Dropout(0.2)
 
     def forward(self, x, action=None):
+        # Taking care of any augmentation in the observation space
+        x = x[:, :self.obs_size]
         if self.batch_norm:
             x = self.bnorm1(self.activation(self.fc1(x)))
             if self.model_type == "state_action_risk":
